@@ -477,7 +477,8 @@ function renderSyncPanel(forcedStatus) {
   if (!elements.syncBand) return;
   const isController = sync.role === "controller";
   elements.syncBand.classList.toggle("is-controller", isController);
-  elements.startSync.disabled = sync.connecting || isController;
+  elements.startSync.disabled = sync.connecting || isController || Boolean(sync.controllerUrl);
+  elements.startSync.querySelector("span").textContent = sync.controllerUrl ? "QR actif" : "Activer le QR";
   elements.copyControllerLink.disabled = !sync.controllerUrl;
   elements.controllerUrl.value = sync.controllerUrl || "";
 
@@ -489,7 +490,13 @@ function renderSyncPanel(forcedStatus) {
 
   if (sync.controllerUrl) {
     elements.syncStatus.textContent = forcedStatus || "QR actif sur le réseau local. Les téléphones qui le scannent rejoignent la saisie de scores.";
-    elements.qrCode.innerHTML = generateQrSvg(sync.controllerUrl);
+    elements.qrCode.innerHTML = `
+      <img
+        class="qr-svg"
+        src="/api/qr.svg?text=${encodeURIComponent(sync.controllerUrl)}"
+        alt="QR code à scanner pour rejoindre la saisie mobile"
+      />
+    `;
     return;
   }
 
@@ -952,187 +959,6 @@ function pulseHero() {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   document.body.classList.remove("round-pulse");
   window.requestAnimationFrame(() => document.body.classList.add("round-pulse"));
-}
-
-function generateQrSvg(text) {
-  try {
-    const modules = createQrModules(text);
-    const quiet = 4;
-    const size = modules.length + quiet * 2;
-    const cells = [];
-    modules.forEach((row, r) => {
-      row.forEach((value, c) => {
-        if (value) cells.push(`<rect x="${c + quiet}" y="${r + quiet}" width="1" height="1"/>`);
-      });
-    });
-    return `
-      <svg class="qr-svg" viewBox="0 0 ${size} ${size}" role="img" aria-label="QR code mobile">
-        <rect width="${size}" height="${size}" fill="#fff"/>
-        <g fill="#2f1725">${cells.join("")}</g>
-      </svg>
-    `;
-  } catch {
-    return `<strong>QR indisponible</strong><small>Copie le lien mobile ci-dessous.</small>`;
-  }
-}
-
-function createQrModules(text) {
-  const version = 5;
-  const size = 21 + (version - 1) * 4;
-  const dataCodewords = 108;
-  const eccCodewords = 26;
-  const bytes = Array.from(new TextEncoder().encode(text));
-  if (bytes.length > 106) throw new Error("QR payload too long");
-
-  const bits = [];
-  appendBits(bits, 0b0100, 4);
-  appendBits(bits, bytes.length, 8);
-  bytes.forEach((byte) => appendBits(bits, byte, 8));
-  const capacityBits = dataCodewords * 8;
-  appendBits(bits, 0, Math.min(4, capacityBits - bits.length));
-  while (bits.length % 8) bits.push(0);
-
-  const data = [];
-  for (let i = 0; i < bits.length; i += 8) {
-    data.push(bits.slice(i, i + 8).reduce((value, bit) => (value << 1) | bit, 0));
-  }
-  for (let pad = 0xec; data.length < dataCodewords; pad ^= 0xec ^ 0x11) data.push(pad);
-
-  const codewords = data.concat(reedSolomonCompute(data, eccCodewords));
-  const allBits = [];
-  codewords.forEach((codeword) => appendBits(allBits, codeword, 8));
-
-  const modules = Array.from({ length: size }, () => Array(size).fill(null));
-  const set = (row, col, value) => {
-    if (row >= 0 && row < size && col >= 0 && col < size) modules[row][col] = Boolean(value);
-  };
-
-  drawFinder(modules, 0, 0);
-  drawFinder(modules, 0, size - 7);
-  drawFinder(modules, size - 7, 0);
-  drawAlignment(modules, 30, 30);
-
-  for (let i = 8; i < size - 8; i++) {
-    set(6, i, i % 2 === 0);
-    set(i, 6, i % 2 === 0);
-  }
-  set(size - 8, 8, true);
-
-  let bitIndex = 0;
-  let upward = true;
-  for (let col = size - 1; col > 0; col -= 2) {
-    if (col === 6) col -= 1;
-    for (let i = 0; i < size; i++) {
-      const row = upward ? size - 1 - i : i;
-      for (let c = col; c >= col - 1; c--) {
-        if (modules[row][c] !== null) continue;
-        const bit = bitIndex < allBits.length ? allBits[bitIndex] : 0;
-        const mask = (row + c) % 2 === 0;
-        modules[row][c] = Boolean(bit) !== mask;
-        bitIndex += 1;
-      }
-    }
-    upward = !upward;
-  }
-
-  drawFormatBits(modules, 1, 0);
-  return modules.map((row) => row.map(Boolean));
-}
-
-function appendBits(bits, value, length) {
-  for (let i = length - 1; i >= 0; i--) {
-    bits.push((value >>> i) & 1);
-  }
-}
-
-function drawFinder(modules, row, col) {
-  for (let r = -1; r <= 7; r++) {
-    for (let c = -1; c <= 7; c++) {
-      const rr = row + r;
-      const cc = col + c;
-      if (rr < 0 || rr >= modules.length || cc < 0 || cc >= modules.length) continue;
-      const isBlack = r >= 0 && r <= 6 && c >= 0 && c <= 6 && (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4));
-      modules[rr][cc] = isBlack;
-    }
-  }
-}
-
-function drawAlignment(modules, centerRow, centerCol) {
-  for (let r = -2; r <= 2; r++) {
-    for (let c = -2; c <= 2; c++) {
-      const distance = Math.max(Math.abs(r), Math.abs(c));
-      modules[centerRow + r][centerCol + c] = distance === 2 || distance === 0;
-    }
-  }
-}
-
-function drawFormatBits(modules, errorLevelBits, mask) {
-  const size = modules.length;
-  const data = (errorLevelBits << 3) | mask;
-  let remainder = data;
-  for (let i = 0; i < 10; i++) {
-    remainder = (remainder << 1) ^ (((remainder >>> 9) & 1) ? 0x537 : 0);
-  }
-  const bits = (((data << 10) | remainder) ^ 0x5412) & 0x7fff;
-  const get = (i) => ((bits >>> i) & 1) === 1;
-  const set = (row, col, value) => {
-    modules[row][col] = value;
-  };
-
-  for (let i = 0; i <= 5; i++) set(8, i, get(i));
-  set(8, 7, get(6));
-  set(8, 8, get(7));
-  set(7, 8, get(8));
-  for (let i = 9; i < 15; i++) set(14 - i, 8, get(i));
-  for (let i = 0; i < 8; i++) set(size - 1 - i, 8, get(i));
-  for (let i = 8; i < 15; i++) set(8, size - 15 + i, get(i));
-  set(size - 8, 8, true);
-}
-
-function reedSolomonCompute(data, degree) {
-  const generator = reedSolomonGenerator(degree);
-  const result = Array(degree).fill(0);
-  for (const byte of data) {
-    const factor = byte ^ result.shift();
-    result.push(0);
-    generator.forEach((coefficient, index) => {
-      result[index] ^= gfMultiply(coefficient, factor);
-    });
-  }
-  return result;
-}
-
-function reedSolomonGenerator(degree) {
-  let result = [1];
-  for (let i = 0; i < degree; i++) {
-    const next = Array(result.length + 1).fill(0);
-    result.forEach((coefficient, index) => {
-      next[index] ^= coefficient;
-      next[index + 1] ^= gfMultiply(coefficient, gfPow(i));
-    });
-    result = next;
-  }
-  return result.slice(1);
-}
-
-const GF_EXP = Array(512);
-const GF_LOG = Array(256);
-let gfValue = 1;
-for (let i = 0; i < 255; i++) {
-  GF_EXP[i] = gfValue;
-  GF_LOG[gfValue] = i;
-  gfValue <<= 1;
-  if (gfValue & 0x100) gfValue ^= 0x11d;
-}
-for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
-
-function gfMultiply(a, b) {
-  if (a === 0 || b === 0) return 0;
-  return GF_EXP[GF_LOG[a] + GF_LOG[b]];
-}
-
-function gfPow(power) {
-  return GF_EXP[power % 255];
 }
 
 function formatNumber(value) {

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const QRCode = require("qrcode");
 
 const PORT = Number(process.env.PORT) || 8000;
 const ROOT = __dirname;
@@ -264,6 +265,29 @@ function serveFile(req, res, pathname) {
 }
 
 async function handleApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/qr.svg") {
+    const text = url.searchParams.get("text") || "";
+    if (!text) {
+      sendJson(res, 400, { error: "Texte QR manquant." });
+      return true;
+    }
+    const svg = await QRCode.toString(text, {
+      type: "svg",
+      errorCorrectionLevel: "M",
+      margin: 3,
+      color: {
+        dark: "#2f1725",
+        light: "#ffffff",
+      },
+    });
+    res.writeHead(200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(svg);
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/sessions") {
     const body = await readJson(req);
     const { session, controllerUrl } = createSession(body.state, req);
