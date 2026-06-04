@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Plateforme visuelle et interactive pour noter les scores de Skyjo, suivre le classement et annoncer les victoires."
+    />
+    <title>Skyjo Score Arena</title>
+    <link rel="stylesheet" href="/styles.css?v=4" />
+    <script defer src="/app.js?v=4"></script>
+  </head>
+  <body>
+    <canvas id="confetti-canvas" aria-hidden="true"></canvas>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="skip-link" href="#main">Aller au contenu</a>
+        <div class="brand-lockup" aria-label="Skyjo Score Arena">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div>
+            <p class="eyebrow">Scorekeeper live</p>
+            <h1>Skyjo Score Arena</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" id="rules-toggle" type="button" aria-expanded="false" aria-controls="rules-panel">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" />
+            </svg>
+            <span>Règles</span>
+          </button>
+          <button class="icon-button subtle" id="reset-game" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7" />
+              <path d="M3 4v5h5" />
+            </svg>
+            <span>Reset</span>
+          </button>
+        </div>
+      </header>
+
+      <main id="main">
+        <section class="hero-band" aria-labelledby="hero-title">
+          <div class="hero-art" aria-hidden="true"></div>
+          <div class="hero-copy">
+            <p class="status-pill" id="game-status">Partie locale prête</p>
+            <h2 id="hero-title">Un tableau de score qui garde la tension à table.</h2>
+            <p>
+              Le desktop devient l'écran d'ambiance. Les joueurs scannent le QR, saisissent les manches sur mobile,
+              et le podium pulse en direct autour de la table.
+            </p>
+          </div>
+
+          <div class="table-visual" aria-hidden="true">
+            <div class="card-stack">
+              <span class="sky-card card-minus">-2</span>
+              <span class="sky-card card-zero">0</span>
+              <span class="sky-card card-high">12</span>
+            </div>
+            <div class="score-orbit">
+              <span>100</span>
+              <span>leader</span>
+              <span>KO</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="sync-band" id="sync-band" aria-labelledby="sync-title">
+          <div class="sync-copy">
+            <p class="eyebrow">Mobile live</p>
+            <h2 id="sync-title">Scanne le QR, note les scores depuis ton téléphone.</h2>
+            <p id="sync-status">Lance le mode synchronisé pour générer un QR local à partager autour de la table.</p>
+          </div>
+          <div class="qr-stage">
+            <div class="qr-frame" id="qr-code" aria-label="QR code pour rejoindre la saisie mobile">
+              <span>QR</span>
+            </div>
+            <div class="sync-actions">
+              <button class="primary-button" id="start-sync" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+                Activer le QR
+              </button>
+              <button class="ghost-button" id="copy-controller-link" type="button" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1" />
+                  <path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1" />
+                </svg>
+                Copier le lien
+              </button>
+            </div>
+            <input id="controller-url" class="controller-url" type="text" readonly aria-label="Lien mobile de saisie" />
+          </div>
+        </section>
+
+        <section class="rules-panel" id="rules-panel" hidden aria-labelledby="rules-title">
+          <div>
+            <p class="eyebrow">Règles prises en compte</p>
+            <h2 id="rules-title">Résumé scoring Skyjo</h2>
+          </div>
+          <div class="rules-grid">
+            <article>
+              <h3>Objectif</h3>
+              <p>Le score le plus bas gagne. À la fin de chaque manche, les scores sont ajoutés au total.</p>
+            </article>
+            <article>
+              <h3>Fin de partie</h3>
+              <p>La partie se termine dès qu'au moins un joueur atteint le seuil choisi, 100 par défaut.</p>
+            </article>
+            <article>
+              <h3>Joueur qui ferme</h3>
+              <p>S'il n'a pas strictement le plus petit score de manche, son score positif est doublé.</p>
+            </article>
+            <article>
+              <h3>Colonnes identiques</h3>
+              <p>Les trois cartes identiques d'une colonne sont retirées avant le décompte final de la manche.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="setup-band" aria-labelledby="setup-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Table</p>
+              <h2 id="setup-title">Joueurs et paramètres</h2>
+            </div>
+            <p id="player-count">0 joueur</p>
+          </div>
+
+          <form class="player-form" id="player-form">
+            <div class="field">
+              <label for="player-name">Ajouter un joueur</label>
+              <input id="player-name" name="player-name" type="text" autocomplete="off" maxlength="18" placeholder="Ex. Hery" />
+            </div>
+            <button class="primary-button" type="submit">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              Ajouter
+            </button>
+          </form>
+
+          <div class="quick-add" aria-label="Joueurs rapides">
+            <button type="button" data-quick-name="Mila">Mila</button>
+            <button type="button" data-quick-name="Nary">Nary</button>
+            <button type="button" data-quick-name="Tiana">Tiana</button>
+            <button type="button" data-quick-name="Lova">Lova</button>
+          </div>
+
+          <div class="settings-grid">
+            <div class="field">
+              <label for="target-score">Seuil de fin</label>
+              <input id="target-score" type="number" inputmode="numeric" min="20" max="500" step="5" />
+            </div>
+            <label class="toggle-row" for="closer-penalty">
+              <span>
+                <strong>Pénalité officielle</strong>
+                <small>Double le score positif du joueur qui ferme s'il n'est pas seul plus bas.</small>
+              </span>
+              <input id="closer-penalty" type="checkbox" />
+            </label>
+          </div>
+
+          <div class="players-strip" id="players-strip" aria-live="polite"></div>
+        </section>
+
+        <section class="live-table-band" aria-labelledby="live-table-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Table live</p>
+              <h2 id="live-table-title">La partie en orbite</h2>
+            </div>
+          </div>
+          <div class="table-mat" id="live-table" aria-live="polite"></div>
+        </section>
+
+        <section class="arena-grid" aria-label="Suivi de partie">
+          <div class="ranking-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Classement actuel</p>
+                <h2>Podium live</h2>
+              </div>
+              <span class="round-pill" id="round-pill">Manche 0</span>
+            </div>
+            <div class="leader-callout" id="leader-callout">
+              Ajoute au moins deux joueurs pour lancer la course.
+            </div>
+            <div class="ranking-list" id="ranking-list"></div>
+          </div>
+
+          <div class="round-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Saisie</p>
+                <h2>Nouvelle manche</h2>
+              </div>
+            </div>
+
+            <form id="round-form" class="round-form">
+              <div class="field">
+                <label for="closer-select">Qui a révélé toutes ses cartes ?</label>
+                <select id="closer-select" name="closer"></select>
+              </div>
+              <div class="score-inputs" id="score-inputs"></div>
+              <div class="form-actions">
+                <button class="primary-button" id="submit-round" type="submit">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                  Valider la manche
+                </button>
+                <button class="ghost-button" id="undo-round" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 14 4 9l5-5" />
+                    <path d="M4 9h10a6 6 0 0 1 0 12h-2" />
+                  </svg>
+                  Annuler la dernière
+                </button>
+              </div>
+              <p class="form-note" id="round-help">
+                Saisis le score total de manche après retrait des colonnes identiques.
+              </p>
+            </form>
+          </div>
+        </section>
+
+        <section class="insights-band" aria-labelledby="insights-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Analyse</p>
+              <h2 id="insights-title">Dynamique de partie</h2>
+            </div>
+          </div>
+          <div class="insight-grid" id="insight-grid"></div>
+          <div class="tension-chart" id="tension-chart" aria-label="Progression des joueurs vers le seuil"></div>
+        </section>
+
+        <section class="history-band" aria-labelledby="history-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Historique</p>
+              <h2 id="history-title">Manches jouées</h2>
+            </div>
+          </div>
+          <div class="history-table-wrap">
+            <table class="history-table" id="history-table">
+              <caption>
+                Scores saisis par manche. Une étoile textuelle indique le joueur qui a fermé la manche.
+              </caption>
+              <thead id="history-head"></thead>
+              <tbody id="history-body"></tbody>
+            </table>
+          </div>
+          <div class="round-cards-history" id="round-cards-history"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <dialog class="victory-dialog" id="victory-dialog" aria-labelledby="victory-title">
+      <div class="victory-content">
+        <button class="dialog-close" id="close-victory" type="button" aria-label="Fermer l'annonce">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+        <p class="eyebrow">Fin de partie</p>
+        <h2 id="victory-title">Victoire !</h2>
+        <p id="victory-copy"></p>
+        <div class="victory-ranking" id="victory-ranking"></div>
+        <button class="primary-button" id="victory-new-game" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+          Nouvelle partie
+        </button>
+      </div>
+    </dialog>
+
+    <nav class="mobile-dock" aria-label="Navigation rapide mobile">
+      <a href="#sync-band">QR</a>
+      <a href="#setup-title">Table</a>
+      <a href="#main">Score</a>
+      <a href="#history-title">Manches</a>
+    </nav>
+  </body>
+</html>
