@@ -1,4 +1,5 @@
 const SkyjoChaos = window.SkyjoChaos;
+const ScoreDraft = window.SkyjoScoreDraft;
 const ScoreViz = window.SkyjoScoreViz;
 const STORAGE_KEY = "skyjo-score-arena-state-v2";
 const COLORS = ["#e11d48", "#2563eb", "#0f766e", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#65a30d"];
@@ -63,6 +64,9 @@ const sync = {
 let state = loadState();
 let lastRenderedRound = state.rounds.length;
 let previousRankingIds = [];
+let localRoundDraft = ScoreDraft.normalizeRoundDraft(state.roundDraft, state.players);
+let closerOptionsSignature = "";
+let scoreInputsSignature = "";
 
 function createInitialState() {
   return {
@@ -103,7 +107,7 @@ function normalizeState(input) {
     chaosMode: SkyjoChaos.normalizeChaosMode(input.chaosMode, rounds),
     activeChaosCard: SkyjoChaos.normalizeActiveChaosCard(input.activeChaosCard, players),
     gameMasterId: players.some((player) => player.id === input.gameMasterId) ? input.gameMasterId : null,
-    roundDraft: input.roundDraft && typeof input.roundDraft === "object" ? input.roundDraft : createEmptyRoundDraft(),
+    roundDraft: ScoreDraft.normalizeRoundDraft(input.roundDraft, players),
     gameOver: Boolean(input.gameOver),
   };
   ensureGameMaster(normalized, false);
@@ -115,6 +119,33 @@ function saveState() {
   if (sync.role !== "controller") {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
+}
+
+function setLocalRoundDraft(draft) {
+  localRoundDraft = ScoreDraft.normalizeRoundDraft(draft, state.players);
+  state.roundDraft = localRoundDraft;
+  saveState();
+}
+
+function resetLocalRoundDraft() {
+  setLocalRoundDraft(ScoreDraft.createEmptyRoundDraft());
+}
+
+function reconcileLocalRoundDraft(previousState, nextState, meta = {}, action = {}) {
+  const shouldClearDraft =
+    action.type === "RESET_GAME" ||
+    ScoreDraft.shouldClearRoundDraft(previousState, nextState, {
+      actionType: action.type,
+      draft: localRoundDraft,
+      preserveRemoteDraft: Boolean(meta?.round && !action.type),
+    });
+
+  if (shouldClearDraft) {
+    localRoundDraft = ScoreDraft.createEmptyRoundDraft();
+  } else {
+    localRoundDraft = ScoreDraft.normalizeRoundDraft(localRoundDraft, nextState.players);
+  }
+  nextState.roundDraft = localRoundDraft;
 }
 
 function uid(prefix) {
@@ -259,8 +290,11 @@ async function connectSession() {
 }
 
 function updateStateFromRemote(nextState, revision, meta) {
+  const previousState = state;
   const wasGameOver = state.gameOver;
-  state = normalizeState(nextState);
+  const normalizedState = normalizeState(nextState);
+  reconcileLocalRoundDraft(previousState, normalizedState, meta);
+  state = normalizedState;
   sync.revision = revision;
   saveState();
   render();
@@ -304,7 +338,9 @@ async function dispatchAction(action) {
     showToast(result.error, "danger");
     return;
   }
+  const previousState = state;
   const wasGameOver = state.gameOver;
+  reconcileLocalRoundDraft(previousState, result.state, result.meta || {}, action);
   state = result.state;
   saveState();
   render();
@@ -507,14 +543,18 @@ function submitRound(event) {
   const closerId = elements.closerSelect.value;
   const scores = {};
   let firstInvalidInput = null;
+  let nextDraft = ScoreDraft.syncDraftCloser(localRoundDraft, closerId, state.players);
   state.players.forEach((player) => {
-    const input = document.querySelector(`[data-score-input="${player.id}"]`);
-    const value = Number(input?.value);
+    const input = getScoreInput(player.id);
+    const inputValue = input?.value || "";
+    const value = Number(inputValue);
+    nextDraft = ScoreDraft.syncDraftScore(nextDraft, player.id, inputValue, state.players);
     if (!Number.isInteger(value)) {
       firstInvalidInput = firstInvalidInput || input;
     }
     scores[player.id] = value;
   });
+  setLocalRoundDraft(nextDraft);
 
   if (firstInvalidInput) {
     showToast("Chaque score de manche doit être un nombre entier.", "danger");
@@ -526,6 +566,8 @@ function submitRound(event) {
 }
 
 function clearScoreInputs() {
+  resetLocalRoundDraft();
+  elements.closerSelect.value = "";
   document.querySelectorAll("[data-score-input]").forEach((input) => {
     input.value = "";
   });
@@ -786,49 +828,130 @@ function renderLiveTable() {
 
 function renderRoundForm() {
   const disabled = state.players.length < 2 || state.gameOver;
-  elements.closerSelect.innerHTML = [
-    `<option value="">Choisir le joueur</option>`,
-    ...state.players.map((player) => `<option value="${player.id}">${escapeHtml(player.name)}</option>`),
-  ].join("");
-  elements.closerSelect.disabled = disabled;
+  localRoundDraft = ScoreDraft.normalizeRoundDraft(localRoundDraft, state.players);
+  renderCloserSelect(disabled);
   elements.submitRound.disabled = disabled;
+  renderScoreInputs(disabled);
+}
+
+function renderCloserSelect(disabled) {
+  const signature = ScoreDraft.createPlayerSignature(state.players);
+  if (closerOptionsSignature !== signature) {
+    elements.closerSelect.innerHTML = [
+      `<option value="">Choisir le joueur</option>`,
+      ...state.players.map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(player.name)}</option>`),
+    ].join("");
+    closerOptionsSignature = signature;
+  }
+
+  elements.closerSelect.value = localRoundDraft.closerId || "";
+  elements.closerSelect.disabled = disabled;
+}
+
+function renderScoreInputs(disabled) {
+  const signature = ScoreDraft.createPlayerSignature(state.players);
 
   if (state.players.length === 0) {
-    elements.scoreInputs.innerHTML = `<div class="empty-state">Les champs de score apparaîtront ici dès que la table aura des joueurs.</div>`;
+    if (scoreInputsSignature !== "empty") {
+      elements.scoreInputs.innerHTML = `<div class="empty-state">Les champs de score apparaîtront ici dès que la table aura des joueurs.</div>`;
+      scoreInputsSignature = "empty";
+    }
     return;
   }
 
+  if (scoreInputsSignature !== signature) {
+    elements.scoreInputs.innerHTML = state.players.map((player, index) => renderScoreInputRow(player, index, disabled)).join("");
+    scoreInputsSignature = signature;
+  }
+
+  updateScoreInputRows(disabled);
+}
+
+function renderScoreInputRow(player, index, disabled) {
+  const isLastInput = index === state.players.length - 1;
+  const draftValue = localRoundDraft.scores[player.id] || "";
+  return `
+    <div class="score-row score-input-card" data-score-row="${escapeHtml(player.id)}" style="--player-color: ${player.color}; --delay: ${index * 35}ms">
+      <label for="score-${escapeHtml(player.id)}">
+        <span class="player-avatar" aria-hidden="true">${escapeHtml(player.name.charAt(0).toUpperCase())}</span>
+        <span>
+          <strong>${escapeHtml(player.name)}</strong>
+          <small data-score-total="${escapeHtml(player.id)}">0 points cumulés</small>
+        </span>
+      </label>
+      <input
+        id="score-${escapeHtml(player.id)}"
+        data-score-input="${escapeHtml(player.id)}"
+        type="number"
+        inputmode="numeric"
+        step="1"
+        placeholder="0"
+        enterkeyhint="${isLastInput ? "done" : "next"}"
+        value="${escapeHtml(draftValue)}"
+        ${disabled ? "disabled" : ""}
+        aria-label="Score de manche pour ${escapeHtml(player.name)}"
+      />
+      <div class="score-stepper" aria-label="Raccourcis score ${escapeHtml(player.name)}">
+        ${[-2, 0, 5, 10, 12].map((value) => `<button type="button" data-score-value="${value}" data-target-score="${escapeHtml(player.id)}" ${disabled ? "disabled" : ""}>${value}</button>`).join("")}
+        ${[-5, -1, 1, 5].map((value) => `<button type="button" data-score-bump="${value}" data-target-score="${escapeHtml(player.id)}" ${disabled ? "disabled" : ""}>${value > 0 ? "+" : ""}${value}</button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function updateScoreInputRows(disabled) {
   const totals = getTotals();
-  elements.scoreInputs.innerHTML = state.players
-    .map((player, index) => {
-      const currentTotal = totals[player.id] ?? 0;
-      return `
-        <div class="score-row score-input-card" style="--player-color: ${player.color}; --delay: ${index * 35}ms">
-          <label for="score-${player.id}">
-            <span class="player-avatar" aria-hidden="true">${escapeHtml(player.name.charAt(0).toUpperCase())}</span>
-            <span>
-              <strong>${escapeHtml(player.name)}</strong>
-              <small>${currentTotal} points cumulés</small>
-            </span>
-          </label>
-          <input
-            id="score-${player.id}"
-            data-score-input="${player.id}"
-            type="number"
-            inputmode="numeric"
-            step="1"
-            placeholder="0"
-            ${disabled ? "disabled" : ""}
-            aria-label="Score de manche pour ${escapeHtml(player.name)}"
-          />
-          <div class="score-stepper" aria-label="Raccourcis score ${escapeHtml(player.name)}">
-            ${[-2, 0, 5, 10, 12].map((value) => `<button type="button" data-score-value="${value}" data-target-score="${player.id}" ${disabled ? "disabled" : ""}>${value}</button>`).join("")}
-            ${[-5, -1, 1, 5].map((value) => `<button type="button" data-score-bump="${value}" data-target-score="${player.id}" ${disabled ? "disabled" : ""}>${value > 0 ? "+" : ""}${value}</button>`).join("")}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+  state.players.forEach((player, index) => {
+    const row = findScoreElement("[data-score-row]", "scoreRow", player.id);
+    const total = findScoreElement("[data-score-total]", "scoreTotal", player.id);
+    const input = getScoreInput(player.id);
+    if (!row || !input) return;
+
+    row.style.setProperty("--player-color", player.color);
+    row.style.setProperty("--delay", `${index * 35}ms`);
+    if (total) total.textContent = `${totals[player.id] ?? 0} points cumulés`;
+    if (input.value !== (localRoundDraft.scores[player.id] || "")) {
+      input.value = localRoundDraft.scores[player.id] || "";
+    }
+    input.disabled = disabled;
+    row.querySelectorAll("button").forEach((button) => {
+      button.disabled = disabled;
+    });
+  });
+}
+
+function findScoreElement(selector, datasetKey, playerId) {
+  return Array.from(elements.scoreInputs.querySelectorAll(selector)).find((element) => element.dataset[datasetKey] === playerId) || null;
+}
+
+function getScoreInput(playerId) {
+  return findScoreElement("[data-score-input]", "scoreInput", playerId);
+}
+
+function setScoreInputValue(input, value) {
+  if (!input) return;
+  input.value = String(value);
+  setLocalRoundDraft(ScoreDraft.syncDraftScore(localRoundDraft, input.dataset.scoreInput, input.value, state.players));
+}
+
+function focusScoreInput(input) {
+  if (!input) return;
+  try {
+    input.focus({ preventScroll: true });
+  } catch {
+    input.focus();
+  }
+}
+
+function focusNextScoreInput(currentInput) {
+  const inputs = state.players.map((player) => getScoreInput(player.id)).filter(Boolean);
+  const currentIndex = inputs.indexOf(currentInput);
+  if (currentIndex === -1) return false;
+  const nextInput = inputs[currentIndex + 1];
+  if (!nextInput) return false;
+  focusScoreInput(nextInput);
+  nextInput.select();
+  return true;
 }
 
 function renderRanking() {
@@ -1437,6 +1560,25 @@ elements.playerForm.addEventListener("submit", (event) => {
   elements.playerName.value = "";
 });
 
+elements.closerSelect.addEventListener("change", () => {
+  setLocalRoundDraft(ScoreDraft.syncDraftCloser(localRoundDraft, elements.closerSelect.value, state.players));
+});
+
+elements.scoreInputs.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-score-input]");
+  if (!input) return;
+  setLocalRoundDraft(ScoreDraft.syncDraftScore(localRoundDraft, input.dataset.scoreInput, input.value, state.players));
+});
+
+elements.scoreInputs.addEventListener("keydown", (event) => {
+  const input = event.target.closest("[data-score-input]");
+  if (!input || event.key !== "Enter") return;
+  event.preventDefault();
+  if (!focusNextScoreInput(input)) {
+    input.blur();
+  }
+});
+
 document.addEventListener("click", (event) => {
   const removeButton = event.target.closest("[data-remove-player]");
   if (removeButton) {
@@ -1452,15 +1594,23 @@ document.addEventListener("click", (event) => {
 
   const valueButton = event.target.closest("[data-score-value]");
   if (valueButton) {
-    const input = document.querySelector(`[data-score-input="${valueButton.dataset.targetScore}"]`);
-    if (input) input.value = valueButton.dataset.scoreValue;
+    const input = getScoreInput(valueButton.dataset.targetScore);
+    if (input) {
+      setScoreInputValue(input, valueButton.dataset.scoreValue);
+      focusScoreInput(input);
+      input.select();
+    }
     return;
   }
 
   const bumpButton = event.target.closest("[data-score-bump]");
   if (bumpButton) {
-    const input = document.querySelector(`[data-score-input="${bumpButton.dataset.targetScore}"]`);
-    if (input) input.value = String((Number(input.value) || 0) + Number(bumpButton.dataset.scoreBump));
+    const input = getScoreInput(bumpButton.dataset.targetScore);
+    if (input) {
+      setScoreInputValue(input, String((Number(input.value) || 0) + Number(bumpButton.dataset.scoreBump)));
+      focusScoreInput(input);
+      input.select();
+    }
   }
 });
 
