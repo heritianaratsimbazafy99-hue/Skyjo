@@ -1799,3 +1799,70 @@ body.controller-mode .round-panel {
     top: 0;
   }
 }
+
+.chaos-toggle-row {
+  border-color: rgba(225, 29, 72, 0.28);
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.12), rgba(245, 158, 11, 0.14));
+}
+
+.chaos-intensity-field select {
+  min-height: 48px;
+  border: 1px solid rgba(47, 23, 37, 0.16);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: #fff;
+  color: var(--color-foreground);
+  font: inherit;
+}
+
+.chaos-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(225, 29, 72, 0.24);
+  border-radius: 8px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(254, 226, 226, 0.9));
+  box-shadow: 0 16px 38px rgba(47, 23, 37, 0.1);
+}
+
+.chaos-card.is-empty {
+  border-color: rgba(47, 23, 37, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.chaos-card.is-masked {
+  border-color: rgba(124, 58, 237, 0.28);
+  background: linear-gradient(135deg, rgba(237, 233, 254, 0.98), rgba(219, 234, 254, 0.86));
+}
+
+.chaos-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.chaos-card-kicker,
+.chaos-rarity {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chaos-card strong {
+  font-size: 1.05rem;
+}
+
+.chaos-card p,
+.chaos-card small {
+  margin: 0;
+  color: rgba(47, 23, 37, 0.72);
+}
+
+.chaos-rarity {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(225, 29, 72, 0.12);
+  color: #be123c;
+}

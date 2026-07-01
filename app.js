@@ -20,8 +20,12 @@ const elements = {
   liveTable: document.querySelector("#live-table"),
   targetScore: document.querySelector("#target-score"),
   closerPenalty: document.querySelector("#closer-penalty"),
+  chaosMode: document.querySelector("#chaos-mode"),
+  chaosIntensity: document.querySelector("#chaos-intensity"),
+  chaosCard: document.querySelector("#chaos-card"),
   roundPill: document.querySelector("#round-pill"),
   leaderCallout: document.querySelector("#leader-callout"),
+  gameMasterCallout: document.querySelector("#game-master-callout"),
   rankingList: document.querySelector("#ranking-list"),
   closerSelect: document.querySelector("#closer-select"),
   roundForm: document.querySelector("#round-form"),
@@ -423,8 +427,11 @@ function handleActionMeta(action, meta) {
   if (action.type === "SUBMIT_ROUND") {
     clearScoreInputs();
     const closer = state.players.find((player) => player.id === action.closerId);
+    const master = state.players.find((player) => player.id === meta.round?.announcerId);
+    const masterText = master ? `Game Master: ${master.name}.` : "";
     const penaltyText = meta.round?.closerPenaltyApplied ? ` Pénalité appliquée à ${closer?.name}.` : "";
-    showToast(`Manche ${meta.round?.number || state.rounds.length} validée.${penaltyText}`, meta.round?.closerPenaltyApplied ? "danger" : "success");
+    const chaosText = meta.round?.chaos ? ` Chaos: ${meta.round.chaos.title}.` : "";
+    showToast(`Manche ${meta.round?.number || state.rounds.length} validee. ${masterText}${penaltyText}${chaosText}`, meta.round?.closerPenaltyApplied ? "danger" : "success");
     pulseHero();
     return;
   }
@@ -560,9 +567,13 @@ function getAverage(playerId) {
 function render() {
   elements.targetScore.value = state.targetScore;
   elements.closerPenalty.checked = state.doubleCloserPenalty;
+  elements.chaosMode.checked = Boolean(state.chaosMode.enabled);
+  elements.chaosIntensity.value = state.chaosMode.intensity || "extreme";
 
   renderStatus();
   renderSyncPanel();
+  renderGameMasterCallout();
+  renderChaosCard();
   renderPlayers();
   renderLiveTable();
   renderRoundForm();
@@ -572,6 +583,71 @@ function render() {
   updateButtons();
 
   lastRenderedRound = state.rounds.length;
+}
+
+function renderGameMasterCallout() {
+  if (!elements.gameMasterCallout) return;
+  const master = state.players.find((player) => player.id === state.gameMasterId);
+
+  if (!master) {
+    elements.gameMasterCallout.textContent = "Ajoute au moins deux joueurs pour designer le Game Master.";
+    return;
+  }
+
+  elements.gameMasterCallout.textContent = `Game Master: ${master.name}`;
+}
+
+function renderChaosCard() {
+  if (!elements.chaosCard) return;
+  const card = state.activeChaosCard;
+
+  if (!state.chaosMode.enabled) {
+    elements.chaosCard.className = "chaos-card is-empty";
+    elements.chaosCard.innerHTML = `
+      <span class="chaos-card-kicker">Deck Chaos</span>
+      <strong>Mode desactive</strong>
+      <p>Active-le dans les parametres pour tirer une carte a chaque manche.</p>
+    `;
+    return;
+  }
+
+  if (!card) {
+    elements.chaosCard.className = "chaos-card is-empty";
+    elements.chaosCard.innerHTML = `
+      <span class="chaos-card-kicker">Deck Chaos</span>
+      <strong>En attente de table</strong>
+      <p>Ajoute au moins deux joueurs pour tirer la premiere carte.</p>
+    `;
+    return;
+  }
+
+  const targetNames = getChaosTargetNames(card);
+  const isMasked = card.timing === "after" && !card.revealedBeforeSubmit;
+  elements.chaosCard.className = `chaos-card rarity-${card.rarity}${isMasked ? " is-masked" : ""}`;
+  elements.chaosCard.innerHTML = isMasked
+    ? `
+      <span class="chaos-card-kicker">Surprise chaos prete</span>
+      <strong>Carte cachee jusqu'a la validation</strong>
+      <p>L'effet tombera apres le calcul de la manche. Oui, c'est injuste. C'est le principe.</p>
+    `
+    : `
+      <div class="chaos-card-header">
+        <span class="chaos-card-kicker">${escapeHtml(card.manual ? "Defi de table" : "Effet automatique")}</span>
+        <span class="chaos-rarity">${escapeHtml(card.rarity)}</span>
+      </div>
+      <strong>${escapeHtml(card.title)}</strong>
+      <p>${escapeHtml(card.description)}</p>
+      ${targetNames ? `<small>Cible: ${escapeHtml(targetNames)}</small>` : ""}
+    `;
+}
+
+function getChaosTargetNames(card) {
+  const targets = Array.isArray(card.targets?.players) ? card.targets.players : [];
+  if (!targets.length) return "";
+  return targets
+    .map((playerId) => state.players.find((player) => player.id === playerId)?.name)
+    .filter(Boolean)
+    .join(", ");
 }
 
 function renderStatus() {
@@ -1147,6 +1223,22 @@ elements.targetScore.addEventListener("change", () => {
 
 elements.closerPenalty.addEventListener("change", () => {
   dispatchAction({ type: "SET_CLOSER_PENALTY", enabled: elements.closerPenalty.checked });
+});
+
+elements.chaosMode.addEventListener("change", () => {
+  dispatchAction({
+    type: "SET_CHAOS_MODE",
+    enabled: elements.chaosMode.checked,
+    intensity: elements.chaosIntensity.value,
+  });
+});
+
+elements.chaosIntensity.addEventListener("change", () => {
+  dispatchAction({
+    type: "SET_CHAOS_MODE",
+    enabled: elements.chaosMode.checked,
+    intensity: elements.chaosIntensity.value,
+  });
 });
 
 elements.roundForm.addEventListener("submit", submitRound);

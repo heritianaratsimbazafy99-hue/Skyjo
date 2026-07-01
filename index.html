@@ -170,6 +170,19 @@
               </span>
               <input id="closer-penalty" type="checkbox" />
             </label>
+            <label class="toggle-row chaos-toggle-row" for="chaos-mode">
+              <span>
+                <strong>Deck Chaos</strong>
+                <small>Ajoute des cartes random, des malus absurdes et des retournements violents.</small>
+              </span>
+              <input id="chaos-mode" type="checkbox" />
+            </label>
+            <div class="field chaos-intensity-field">
+              <label for="chaos-intensity">Intensite chaos</label>
+              <select id="chaos-intensity">
+                <option value="extreme">Extreme</option>
+              </select>
+            </div>
           </div>
 
           <div class="players-strip" id="players-strip" aria-live="polite"></div>
@@ -207,6 +220,8 @@
                 <h2>Nouvelle manche</h2>
               </div>
             </div>
+            <div class="game-master-callout" id="game-master-callout" aria-live="polite"></div>
+            <div class="chaos-card is-empty" id="chaos-card" aria-live="polite"></div>
 
             <form id="round-form" class="round-form">
               <div class="field">
