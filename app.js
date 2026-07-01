@@ -153,6 +153,10 @@ function ensureGameMaster(targetState, randomize = true) {
   return targetState;
 }
 
+function getGameMaster() {
+  return state.players.find((player) => player.id === state.gameMasterId) || null;
+}
+
 function ensureChaosCardForNextRound(targetState) {
   targetState.chaosMode = SkyjoChaos.normalizeChaosMode(targetState.chaosMode, targetState.rounds);
 
@@ -1025,12 +1029,14 @@ function renderHistory() {
   elements.roundCardsHistory.innerHTML = state.rounds
     .map((round) => {
       const closer = state.players.find((player) => player.id === round.closerId);
+      const announcer = state.players.find((player) => player.id === round.announcerId) || getGameMaster();
       return `
         <article class="round-history-card${round.closerPenaltyApplied ? " has-penalty" : ""}">
           <div>
             <span>Manche ${round.number}</span>
             <strong>${closer ? escapeHtml(closer.name) : "-"} ferme</strong>
           </div>
+          <p class="round-announcer">${announcer && closer ? `${escapeHtml(announcer.name)} annonce la fermeture de ${escapeHtml(closer.name)}.` : "Annonce de fermeture enregistrée."}</p>
           ${round.chaos ? `<p class="round-chaos-note"><strong>${escapeHtml(round.chaos.title)}</strong> ${escapeHtml((round.chaos.effects || []).map((effect) => effect.message).join(", ") || "defi affiche")}</p>` : ""}
           <div class="round-score-grid">
             ${state.players
