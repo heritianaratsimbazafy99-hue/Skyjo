@@ -333,6 +333,7 @@ function applyAction(currentState, action) {
       if (!Number.isInteger(targetScore) || targetScore < 20) return { error: "Le seuil doit être un entier supérieur ou égal à 20." };
       next.targetScore = targetScore;
       next.gameOver = Object.values(getTotals(next)).some((score) => score >= next.targetScore);
+      ensureChaosCardForNextRound(next);
       break;
     }
     case "SET_CLOSER_PENALTY": {
