@@ -179,10 +179,18 @@
     };
   }
 
+  function getRequiredTargetCount(card) {
+    if (card.target === "random-player") return 1;
+    if (card.target === "two-random-players") return 2;
+    return 0;
+  }
+
   function normalizeActiveChaosCard(input, players) {
     const card = getCard(input?.id);
     if (!card) return null;
     const playerIds = new Set((players || []).map((player) => player.id));
+    const validTargets = Array.isArray(input.targets?.players) ? input.targets.players.filter((playerId) => playerIds.has(playerId)) : [];
+    if (validTargets.length < getRequiredTargetCount(card)) return null;
     return {
       id: card.id,
       title: card.title,
@@ -193,7 +201,7 @@
       manual: Boolean(card.manual),
       revealedBeforeSubmit: Boolean(input.revealedBeforeSubmit),
       targets: {
-        players: Array.isArray(input.targets?.players) ? input.targets.players.filter((playerId) => playerIds.has(playerId)) : [],
+        players: validTargets,
       },
     };
   }

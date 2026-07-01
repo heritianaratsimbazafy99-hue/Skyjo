@@ -65,6 +65,31 @@ test("masks after cards before submit but keeps the real card id in state", () =
   assert.deepEqual(card.targets.players, ["p1", "p2"]);
 });
 
+test("normalizes stale two-player random target cards to null", () => {
+  const state = makeState({
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+  });
+  const card = Chaos.selectNextChaosCard(state, {
+    random: () => 0,
+    forceCardId: "score-miroir",
+  });
+  const remainingPlayers = makePlayers().filter((player) => player.id !== "p2");
+
+  assert.equal(Chaos.normalizeActiveChaosCard(card, remainingPlayers), null);
+});
+
+test("keeps active random target cards when required targets are still present", () => {
+  const state = makeState({
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+  });
+  const card = Chaos.selectNextChaosCard(state, {
+    random: () => 0,
+    forceCardId: "interdit-de-fermer",
+  });
+
+  assert.deepEqual(Chaos.normalizeActiveChaosCard(card, makePlayers()), card);
+});
+
 test("does not select previous card or already used very rare card", () => {
   const state = makeState({
     rounds: [{ chaos: { cardId: "zero-heroique" } }],
