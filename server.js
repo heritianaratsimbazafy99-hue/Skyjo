@@ -109,6 +109,20 @@ function ensureChaosCardForNextRound(state) {
   return state;
 }
 
+function redrawActiveChaosCard(state) {
+  if (!SkyjoChaos.isChaosEnabled(state)) {
+    return { error: "Active Deck Chaos avec au moins deux joueurs pour changer de carte." };
+  }
+
+  const card = SkyjoChaos.redrawChaosCard(state);
+  if (!card) {
+    return { error: "Aucune autre carte Chaos disponible pour cette manche." };
+  }
+
+  state.activeChaosCard = card;
+  return { card };
+}
+
 function getTotals(state) {
   return state.players.reduce((totals, player) => {
     totals[player.id] = state.rounds.reduce((sum, round) => sum + (round.adjustedScores[player.id] ?? 0), 0);
@@ -202,6 +216,12 @@ function applyAction(currentState, action) {
       next.activeChaosCard = null;
       ensureChaosCardForNextRound(next);
       meta.message = next.chaosMode.enabled ? `Deck Chaos ${getChaosIntensityLabel(next.chaosMode.intensity).toLowerCase()} activé.` : "Deck Chaos désactivé.";
+      break;
+    }
+    case "REDRAW_CHAOS_CARD": {
+      const result = redrawActiveChaosCard(next);
+      if (result.error) return result;
+      meta.message = "Nouvelle carte Chaos tirée.";
       break;
     }
     case "SUBMIT_ROUND": {

@@ -73,6 +73,38 @@ test("masks after cards before submit but keeps the real card id in state", () =
   assert.deepEqual(card.targets.players, ["p1", "p2"]);
 });
 
+test("caps after-card streaks at two draws", () => {
+  const state = makeState({
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+    rounds: [
+      { chaos: { cardId: "score-miroir" } },
+      { chaos: { cardId: "hold-up" } },
+    ],
+  });
+
+  const eligible = Chaos.getEligibleCards(state);
+
+  assert.ok(eligible.length > 0);
+  assert.ok(eligible.every((card) => card.timing === "before"));
+});
+
+test("redraws the active chaos card with another eligible card", () => {
+  const state = makeState({
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+    activeChaosCard: {
+      id: "interdit-de-fermer",
+      revealedBeforeSubmit: true,
+      targets: { players: ["p1"] },
+    },
+  });
+
+  const card = Chaos.redrawChaosCard(state, { random: () => 0 });
+
+  assert.ok(card);
+  assert.notEqual(card.id, "interdit-de-fermer");
+  assert.equal(card.id, "fermeture-piegee");
+});
+
 test("normalizes stale two-player random target cards to null", () => {
   const state = makeState({
     chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },

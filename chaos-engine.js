@@ -33,6 +33,7 @@
   };
 
   const CHAOS_INTENSITIES = Object.values(CHAOS_INTENSITY);
+  const MAX_CONSECUTIVE_AFTER_CARDS = 2;
   const INTENSITY_RANK = {
     [CHAOS_INTENSITY.EASY]: 0,
     [CHAOS_INTENSITY.MEDIUM]: 1,
@@ -141,16 +142,32 @@
     return state?.rounds?.at?.(-1)?.chaos?.cardId || null;
   }
 
+  function getConsecutiveTimingCount(rounds, timing) {
+    if (!Array.isArray(rounds)) return 0;
+    let count = 0;
+    for (let index = rounds.length - 1; index >= 0; index -= 1) {
+      const cardId = rounds[index]?.chaos?.cardId || rounds[index]?.chaos?.id;
+      if (getCard(cardId)?.timing !== timing) break;
+      count += 1;
+    }
+    return count;
+  }
+
   function getEligibleCards(state) {
     const mode = normalizeChaosMode(state?.chaosMode, state?.rounds || []);
     const previousCardId = getPreviousChaosCardId(state);
-    return CHAOS_CARDS.filter((card) => {
+    const eligibleCards = CHAOS_CARDS.filter((card) => {
       if (card.id === previousCardId) return false;
       if (INTENSITY_RANK[getCardIntensity(card)] > INTENSITY_RANK[mode.intensity]) return false;
       if (card.rarity === RARITY.VERY_RARE && mode.usedRareCardIds.includes(card.id)) return false;
       if (card.requiresTwoRounds && (!Array.isArray(state?.rounds) || state.rounds.length < 2)) return false;
       return true;
     });
+    if (getConsecutiveTimingCount(state?.rounds, TIMING.AFTER) >= MAX_CONSECUTIVE_AFTER_CARDS) {
+      const beforeCards = eligibleCards.filter((card) => card.timing === TIMING.BEFORE);
+      return beforeCards.length ? beforeCards : eligibleCards;
+    }
+    return eligibleCards;
   }
 
   function pickWeighted(cards, random) {
@@ -257,6 +274,16 @@
     }
     const eligible = getEligibleCards(state);
     const selected = pickWeighted(eligible.length ? eligible : CHAOS_CARDS, random);
+    return selected ? snapshotCard(selected, state, random) : null;
+  }
+
+  function redrawChaosCard(state, options = {}) {
+    if (!isChaosEnabled(state)) return null;
+    const random = typeof options.random === "function" ? options.random : Math.random;
+    const activeCardId = normalizeActiveChaosCard(state?.activeChaosCard, state?.players || [])?.id || null;
+    const eligible = getEligibleCards(state);
+    const alternatives = activeCardId ? eligible.filter((card) => card.id !== activeCardId) : eligible;
+    const selected = pickWeighted(alternatives.length ? alternatives : eligible, random);
     return selected ? snapshotCard(selected, state, random) : null;
   }
 
@@ -709,6 +736,7 @@
     isChaosEnabled,
     normalizeActiveChaosCard,
     normalizeChaosMode,
+    redrawChaosCard,
     resolveChaosForRound,
     restoreActiveChaosCardFromRound,
     selectNextChaosCard,

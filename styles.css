@@ -1859,6 +1859,53 @@ input::placeholder {
   justify-content: space-between;
   gap: var(--space-3);
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.chaos-card-header .chaos-card-kicker {
+  margin: 0;
+}
+
+.chaos-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chaos-redraw-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  border: 2px solid oklch(0.78 0.055 230);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--color-primary-strong);
+  padding: 0.42rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 950;
+  box-shadow: 0 3px 0 oklch(0.78 0.045 230);
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 180ms ease;
+}
+
+.chaos-redraw-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.chaos-redraw-button:hover {
+  transform: translateY(-2px);
+  background: oklch(0.98 0.03 90);
+}
+
+.chaos-redraw-button:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 oklch(0.67 0.05 230);
 }
 
 .chaos-rarity {
@@ -2274,6 +2321,15 @@ body.controller-mode .round-panel {
   .sync-actions,
   .score-row.score-input-card {
     grid-template-columns: 1fr;
+  }
+
+  .chaos-card-header {
+    align-items: stretch;
+  }
+
+  .chaos-card-meta,
+  .chaos-redraw-button {
+    width: 100%;
   }
 
   .score-row.score-input-card {

@@ -215,6 +215,20 @@ function ensureChaosCardForNextRound(targetState) {
   return targetState;
 }
 
+function redrawActiveChaosCard(targetState) {
+  if (!SkyjoChaos.isChaosEnabled(targetState)) {
+    return { error: "Active Deck Chaos avec au moins deux joueurs pour changer de carte." };
+  }
+
+  const card = SkyjoChaos.redrawChaosCard(targetState);
+  if (!card) {
+    return { error: "Aucune autre carte Chaos disponible pour cette manche." };
+  }
+
+  targetState.activeChaosCard = card;
+  return { card };
+}
+
 function parseControllerRoute() {
   const match = window.location.pathname.match(/^\/c\/([^/]+)\/([^/]+)/);
   if (!match) return null;
@@ -410,6 +424,12 @@ function applyAction(currentState, action) {
       meta.message = next.chaosMode.enabled ? `Deck Chaos ${getChaosIntensityLabel(next.chaosMode.intensity).toLowerCase()} activé.` : "Deck Chaos désactivé.";
       break;
     }
+    case "REDRAW_CHAOS_CARD": {
+      const result = redrawActiveChaosCard(next);
+      if (result.error) return result;
+      meta.message = "Nouvelle carte Chaos tirée.";
+      break;
+    }
     case "SUBMIT_ROUND": {
       if (next.players.length < 2) return { error: "Ajoute au moins deux joueurs pour noter une manche." };
       if (next.gameOver) return { error: "La partie est terminée. Lance une nouvelle partie pour continuer." };
@@ -588,6 +608,10 @@ function undoRound() {
   dispatchAction({ type: "UNDO_ROUND" });
 }
 
+function redrawChaosCard() {
+  dispatchAction({ type: "REDRAW_CHAOS_CARD" });
+}
+
 function getTotals(targetState = state) {
   return targetState.players.reduce((totals, player) => {
     totals[player.id] = targetState.rounds.reduce((sum, round) => sum + (round.adjustedScores[player.id] ?? 0), 0);
@@ -700,22 +724,51 @@ function renderChaosCard() {
   const isMasked = card.timing === "after" && !card.revealedBeforeSubmit;
   const intensity = state.chaosMode.intensity || "extreme";
   const intensityLabel = getChaosIntensityLabel(intensity);
+  const redrawButton = renderChaosRedrawButton();
   elements.chaosCard.className = `chaos-card rarity-${card.rarity} intensity-${intensity}${isMasked ? " is-masked" : ""}`;
   elements.chaosCard.innerHTML = isMasked
     ? `
-      <span class="chaos-card-kicker">Surprise chaos ${escapeHtml(intensityLabel.toLowerCase())} prête</span>
+      <div class="chaos-card-header">
+        <span class="chaos-card-kicker">Surprise chaos ${escapeHtml(intensityLabel.toLowerCase())} prête</span>
+        ${redrawButton}
+      </div>
       <strong>Carte cachée jusqu'à la validation</strong>
       <p>L'effet tombera après le calcul de la manche. Oui, c'est injuste. C'est le principe.</p>
     `
     : `
       <div class="chaos-card-header">
-        <span class="chaos-card-kicker">${escapeHtml(card.manual ? "Défi de table" : "Effet automatique")}</span>
-        <span class="chaos-rarity">${escapeHtml(intensityLabel)} · ${escapeHtml(getChaosRarityLabel(card.rarity))}</span>
+        <div class="chaos-card-meta">
+          <span class="chaos-card-kicker">${escapeHtml(card.manual ? "Défi de table" : "Effet automatique")}</span>
+          <span class="chaos-rarity">${escapeHtml(intensityLabel)} · ${escapeHtml(getChaosRarityLabel(card.rarity))}</span>
+        </div>
+        ${redrawButton}
       </div>
       <strong>${escapeHtml(card.title)}</strong>
       <p>${escapeHtml(card.description)}</p>
       ${targetNames ? `<small>Cible: ${escapeHtml(targetNames)}</small>` : ""}
     `;
+}
+
+function renderChaosRedrawButton() {
+  const disabled = state.gameOver || !state.chaosMode.enabled || state.players.length < 2 || !state.activeChaosCard;
+  return `
+    <button
+      class="chaos-redraw-button"
+      type="button"
+      data-redraw-chaos-card
+      ${disabled ? "disabled" : ""}
+      aria-label="Changer la carte Chaos active"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M16 3h5v5"></path>
+        <path d="M4 20 21 3"></path>
+        <path d="M21 16v5h-5"></path>
+        <path d="m15 15 6 6"></path>
+        <path d="M4 4l5 5"></path>
+      </svg>
+      <span>Changer</span>
+    </button>
+  `;
 }
 
 function getChaosTargetNames(card) {
@@ -1669,6 +1722,12 @@ document.addEventListener("click", (event) => {
       focusScoreInput(input);
       input.select();
     }
+    return;
+  }
+
+  const redrawButton = event.target.closest("[data-redraw-chaos-card]");
+  if (redrawButton) {
+    redrawChaosCard();
   }
 });
 
