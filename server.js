@@ -5,6 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const QRCode = require("qrcode");
 const SkyjoChaos = require("./chaos-engine");
+const ScoreDraft = require("./score-draft");
 
 const PORT = Number(process.env.PORT) || 8000;
 const ROOT = __dirname;
@@ -53,7 +54,7 @@ function cleanState(input) {
     chaosMode: SkyjoChaos.normalizeChaosMode(input.chaosMode, rounds),
     activeChaosCard: SkyjoChaos.normalizeActiveChaosCard(input.activeChaosCard, players),
     gameMasterId: players.some((player) => player.id === input.gameMasterId) ? input.gameMasterId : null,
-    roundDraft: input.roundDraft && typeof input.roundDraft === "object" ? input.roundDraft : createEmptyRoundDraft(),
+    roundDraft: ScoreDraft.normalizeRoundDraft(input.roundDraft, players),
     gameOver: Boolean(input.gameOver),
   };
   ensureGameMaster(cleaned, false);
@@ -70,10 +71,7 @@ function getPlayerColor(index) {
 }
 
 function createEmptyRoundDraft() {
-  return {
-    closerId: "",
-    scores: {},
-  };
+  return ScoreDraft.createEmptyRoundDraft();
 }
 
 function pickRandomGameMaster(players) {

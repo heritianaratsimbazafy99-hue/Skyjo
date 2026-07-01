@@ -80,3 +80,34 @@ test("session actions require the controller token", async (t) => {
   const payload = await validTokenResponse.json();
   assert.deepEqual(payload.state.players.map((player) => player.name), ["Mila"]);
 });
+
+test("session creation normalizes legacy round drafts", async (t) => {
+  const baseUrl = await startServer(t);
+  const createResponse = await fetch(`${baseUrl}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      state: {
+        players: [
+          { id: "p1", name: "Heritiana" },
+          { id: "p2", name: "Marianah" },
+        ],
+        rounds: [],
+        roundDraft: {
+          closerId: "missing-player",
+          announcements: {
+            p1: true,
+          },
+        },
+      },
+    }),
+  });
+
+  assert.equal(createResponse.status, 201);
+  const session = await createResponse.json();
+
+  assert.deepEqual(session.state.roundDraft, {
+    closerId: "",
+    scores: {},
+  });
+});
