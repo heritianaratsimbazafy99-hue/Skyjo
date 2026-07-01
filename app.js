@@ -395,7 +395,7 @@ function applyAction(currentState, action) {
         ...next.chaosMode,
         usedRareCardIds: [],
       }, next.rounds);
-      next.activeChaosCard = null;
+      next.activeChaosCard = SkyjoChaos.restoreActiveChaosCardFromRound(removed, next.players);
       ensureChaosCardForNextRound(next);
       meta.message = `Manche ${removed.number} annulée.`;
       break;

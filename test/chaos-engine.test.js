@@ -78,6 +78,20 @@ test("normalizes stale two-player random target cards to null", () => {
   assert.equal(Chaos.normalizeActiveChaosCard(card, remainingPlayers), null);
 });
 
+test("normalizes stale ranking target cards to null", () => {
+  const state = makeState({
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+  });
+  const card = Chaos.selectNextChaosCard(state, {
+    random: () => 0,
+    forceCardId: "couronne-lourde",
+  });
+  const remainingPlayers = makePlayers().filter((player) => player.id !== "p1");
+
+  assert.deepEqual(card.targets.players, ["p1"]);
+  assert.equal(Chaos.normalizeActiveChaosCard(card, remainingPlayers), null);
+});
+
 test("keeps active random target cards when required targets are still present", () => {
   const state = makeState({
     chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
@@ -146,6 +160,27 @@ test("score miroir swaps two resolved player scores", () => {
   assert.deepEqual(result.adjustedScores, { p1: 22, p2: 5, p3: 9 });
 });
 
+test("ranking target effects use the active card snapshot", () => {
+  const state = makeState({
+    rounds: [{ adjustedScores: { p1: 20, p2: 0, p3: 10 } }],
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+  });
+  const result = Chaos.resolveChaosForRound({
+    stateBeforeRound: state,
+    rawScores: { p1: 1, p2: 1, p3: 1 },
+    officialScores: { p1: 1, p2: 1, p3: 1 },
+    closerId: "p1",
+    activeChaosCard: {
+      id: "couronne-lourde",
+      revealedBeforeSubmit: true,
+      targets: { players: ["p1"] },
+    },
+  });
+
+  assert.equal(result.adjustedScores.p1, 8);
+  assert.equal(result.adjustedScores.p2, 1);
+});
+
 test("manual cards keep scores but produce an explanation", () => {
   const result = applyCard("annonce-sous-pression", { p1: 5, p2: 12, p3: 9 });
   assert.deepEqual(result.adjustedScores, { p1: 5, p2: 12, p3: 9 });
@@ -156,6 +191,25 @@ test("very rare cards are returned for usedRareCardIds", () => {
   const result = applyCard("banque-cassee", { p1: 5, p2: 21, p3: -3 });
   assert.deepEqual(result.adjustedScores, { p1: 2, p2: 10, p3: -2 });
   assert.deepEqual(result.usedRareCardIds, ["banque-cassee"]);
+});
+
+test("restores a valid active card snapshot from an undone chaos round", () => {
+  const state = makeState({
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+  });
+  const card = Chaos.selectNextChaosCard(state, {
+    random: () => 0,
+    forceCardId: "score-miroir",
+  });
+  const result = Chaos.resolveChaosForRound({
+    stateBeforeRound: state,
+    rawScores: { p1: 5, p2: 22, p3: 9 },
+    officialScores: { p1: 5, p2: 22, p3: 9 },
+    closerId: "p1",
+    activeChaosCard: card,
+  });
+
+  assert.deepEqual(Chaos.restoreActiveChaosCardFromRound({ chaos: result.chaos }, makePlayers()), card);
 });
 
 test("fermeture kamikaze applies on a tied zero closer score", () => {

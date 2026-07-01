@@ -146,21 +146,33 @@
     return picked;
   }
 
+  function getRankingTargetRoles(card) {
+    const rolesByCardId = {
+      "chasse-au-leader": ["leader"],
+      "couronne-lourde": ["leader"],
+      "leader-en-surtension": ["leader"],
+      "dernier-souffle": ["last"],
+      "derniere-place-protegee": ["last"],
+      "contre-leader": ["last"],
+      "sous-marin": ["runnerUp", "leader"],
+      "rattrapage-brutal": ["last", "leader"],
+    };
+    return rolesByCardId[card.id] || [];
+  }
+
   function resolveTargets(card, state, random) {
     const players = state.players || [];
     if (card.target === "random-player") return { players: pickPlayerIds(players, 1, random) };
     if (card.target === "two-random-players") return { players: pickPlayerIds(players, 2, random) };
-    if (card.id === "couronne-lourde" || card.id === "chasse-au-leader" || card.id === "leader-en-surtension") {
-      const leader = getRanking(state)[0];
-      return { players: leader ? [leader.id] : [] };
-    }
-    if (card.id === "dernier-souffle" || card.id === "rattrapage-brutal" || card.id === "contre-leader") {
-      const last = getRanking(state).at(-1);
-      return { players: last ? [last.id] : [] };
-    }
-    if (card.id === "sous-marin") {
-      const runnerUp = getRanking(state)[1];
-      return { players: runnerUp ? [runnerUp.id] : [] };
+    const rankingTargetRoles = getRankingTargetRoles(card);
+    if (rankingTargetRoles.length) {
+      const ranking = getRanking(state);
+      const targetsByRole = {
+        leader: ranking[0]?.id,
+        runnerUp: ranking[1]?.id,
+        last: ranking.at(-1)?.id,
+      };
+      return { players: rankingTargetRoles.map((role) => targetsByRole[role]).filter(Boolean) };
     }
     return { players: [] };
   }
@@ -182,6 +194,8 @@
   function getRequiredTargetCount(card) {
     if (card.target === "random-player") return 1;
     if (card.target === "two-random-players") return 2;
+    const rankingTargetRoles = getRankingTargetRoles(card);
+    if (rankingTargetRoles.length) return rankingTargetRoles.length;
     return 0;
   }
 
@@ -216,6 +230,16 @@
     const eligible = getEligibleCards(state);
     const selected = pickWeighted(eligible.length ? eligible : CHAOS_CARDS, random);
     return selected ? snapshotCard(selected, state, random) : null;
+  }
+
+  function restoreActiveChaosCardFromRound(round, players) {
+    const chaos = round?.chaos;
+    if (!chaos) return null;
+    return normalizeActiveChaosCard({
+      id: chaos.cardId || chaos.id,
+      revealedBeforeSubmit: chaos.revealedBeforeSubmit,
+      targets: chaos.targets,
+    }, players);
   }
 
   function cloneScores(scores) {
@@ -304,8 +328,6 @@
     const closerId = input.closerId;
     const ranking = getRanking(stateBeforeRound);
     const leaderId = ranking[0]?.id || null;
-    const lastId = ranking.at(-1)?.id || null;
-    const runnerUpId = ranking[1]?.id || null;
 
     if (!card) {
       return {
@@ -332,18 +354,20 @@
         break;
       }
       case "dernier-souffle": {
-        if (lastId && bestIds().includes(lastId)) {
-          adjustedScores[lastId] -= 15;
-          addEffect(effects, card, "dernier souffle -15", [lastId]);
+        const targetId = targetPlayers[0];
+        if (targetId && bestIds().includes(targetId)) {
+          adjustedScores[targetId] -= 15;
+          addEffect(effects, card, "dernier souffle -15", [targetId]);
         }
         break;
       }
       case "chasse-au-leader": {
+        const targetId = targetPlayers[0];
         const sorted = Object.entries(adjustedScores).sort((a, b) => a[1] - b[1]);
         const topTwo = sorted.slice(0, 2).map(([playerId]) => playerId);
-        if (leaderId && !topTwo.includes(leaderId)) {
-          adjustedScores[leaderId] += 10;
-          addEffect(effects, card, "chasse au leader +10", [leaderId]);
+        if (targetId && !topTwo.includes(targetId)) {
+          adjustedScores[targetId] += 10;
+          addEffect(effects, card, "chasse au leader +10", [targetId]);
         }
         break;
       }
@@ -469,32 +493,36 @@
         break;
       }
       case "derniere-place-protegee": {
-        if (lastId && worstIds().includes(lastId)) {
-          adjustedScores[lastId] = officialScores[lastId];
-          addEffect(effects, card, "derniere place protegee", [lastId]);
+        const targetId = targetPlayers[0];
+        if (targetId && worstIds().includes(targetId)) {
+          adjustedScores[targetId] = officialScores[targetId];
+          addEffect(effects, card, "derniere place protegee", [targetId]);
         }
         break;
       }
       case "couronne-lourde": {
-        if (leaderId) {
-          adjustedScores[leaderId] += 7;
-          addEffect(effects, card, "couronne lourde +7", [leaderId]);
+        const targetId = targetPlayers[0];
+        if (targetId) {
+          adjustedScores[targetId] += 7;
+          addEffect(effects, card, "couronne lourde +7", [targetId]);
         }
         break;
       }
       case "sous-marin": {
-        if (runnerUpId && leaderId && adjustedScores[runnerUpId] < adjustedScores[leaderId]) {
-          adjustedScores[runnerUpId] -= 5;
-          addEffect(effects, card, "sous-marin -5", [runnerUpId]);
+        const [targetId, snapshotLeaderId] = targetPlayers;
+        if (targetId && snapshotLeaderId && adjustedScores[targetId] < adjustedScores[snapshotLeaderId]) {
+          adjustedScores[targetId] -= 5;
+          addEffect(effects, card, "sous-marin -5", [targetId]);
         }
         break;
       }
       case "rattrapage-brutal": {
-        if (leaderId && lastId) {
+        const [targetId, snapshotLeaderId] = targetPlayers;
+        if (targetId && snapshotLeaderId) {
           const totals = getTotals(stateBeforeRound);
-          if ((totals[lastId] ?? 0) - (totals[leaderId] ?? 0) > 50) {
-            adjustedScores[lastId] -= 20;
-            addEffect(effects, card, "rattrapage brutal -20", [lastId]);
+          if ((totals[targetId] ?? 0) - (totals[snapshotLeaderId] ?? 0) > 50) {
+            adjustedScores[targetId] -= 20;
+            addEffect(effects, card, "rattrapage brutal -20", [targetId]);
           }
         }
         break;
@@ -549,12 +577,13 @@
         break;
       }
       case "leader-en-surtension": {
-        if (leaderId) {
-          const otherScores = Object.entries(adjustedScores).filter(([playerId]) => playerId !== leaderId).map(([, score]) => score);
+        const targetId = targetPlayers[0];
+        if (targetId) {
+          const otherScores = Object.entries(adjustedScores).filter(([playerId]) => playerId !== targetId).map(([, score]) => score);
           const average = otherScores.reduce((sum, score) => sum + score, 0) / Math.max(1, otherScores.length);
-          if (adjustedScores[leaderId] > average) {
-            adjustedScores[leaderId] *= 2;
-            addEffect(effects, card, "leader en surtension x2", [leaderId]);
+          if (adjustedScores[targetId] > average) {
+            adjustedScores[targetId] *= 2;
+            addEffect(effects, card, "leader en surtension x2", [targetId]);
           }
         }
         break;
@@ -651,6 +680,7 @@
     normalizeActiveChaosCard,
     normalizeChaosMode,
     resolveChaosForRound,
+    restoreActiveChaosCardFromRound,
     selectNextChaosCard,
   };
 });
