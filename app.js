@@ -427,11 +427,9 @@ function handleActionMeta(action, meta) {
   if (action.type === "SUBMIT_ROUND") {
     clearScoreInputs();
     const closer = state.players.find((player) => player.id === action.closerId);
-    const master = state.players.find((player) => player.id === meta.round?.announcerId);
-    const masterText = master ? `Game Master: ${master.name}.` : "";
     const penaltyText = meta.round?.closerPenaltyApplied ? ` Pénalité appliquée à ${closer?.name}.` : "";
     const chaosText = meta.round?.chaos ? ` Chaos: ${meta.round.chaos.title}.` : "";
-    showToast(`Manche ${meta.round?.number || state.rounds.length} validee. ${masterText}${penaltyText}${chaosText}`, meta.round?.closerPenaltyApplied ? "danger" : "success");
+    showToast(`Manche ${meta.round?.number || state.rounds.length} validée.${penaltyText}${chaosText}`, meta.round?.closerPenaltyApplied ? "danger" : "success");
     pulseHero();
     return;
   }
