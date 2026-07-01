@@ -104,6 +104,17 @@ test("keeps active random target cards when required targets are still present",
   assert.deepEqual(Chaos.normalizeActiveChaosCard(card, makePlayers()), card);
 });
 
+test("normalizes legacy active cards with timing-based reveal defaults", () => {
+  assert.equal(
+    Chaos.normalizeActiveChaosCard({ id: "couronne-lourde", targets: { players: ["p1"] } }, makePlayers()).revealedBeforeSubmit,
+    true
+  );
+  assert.equal(
+    Chaos.normalizeActiveChaosCard({ id: "score-miroir", targets: { players: ["p1", "p2"] } }, makePlayers()).revealedBeforeSubmit,
+    false
+  );
+});
+
 test("does not select previous card or already used very rare card", () => {
   const state = makeState({
     rounds: [{ chaos: { cardId: "zero-heroique" } }],

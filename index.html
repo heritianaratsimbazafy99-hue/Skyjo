@@ -8,9 +8,13 @@
       content="Plateforme visuelle et interactive pour noter les scores de Skyjo, suivre le classement et annoncer les victoires."
     />
     <title>Skyjo Score Arena</title>
-    <link rel="stylesheet" href="/styles.css?v=4" />
-    <script defer src="/chaos-engine.js?v=1"></script>
-    <script defer src="/app.js?v=6"></script>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2307120e'/%3E%3Crect x='14' y='10' width='28' height='40' rx='5' fill='%2335c575' transform='rotate(-10 28 30)'/%3E%3Crect x='24' y='14' width='28' height='40' rx='5' fill='%23d8b357' transform='rotate(10 38 34)'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/styles.css?v=6" />
+    <script defer src="/chaos-engine.js?v=2"></script>
+    <script defer src="/app.js?v=8"></script>
   </head>
   <body>
     <canvas id="confetti-canvas" aria-hidden="true"></canvas>
@@ -52,7 +56,7 @@
           <div class="hero-art" aria-hidden="true"></div>
           <div class="hero-copy">
             <p class="status-pill" id="game-status">Partie locale prête</p>
-            <h2 id="hero-title">Un tableau de score qui garde la tension à table.</h2>
+            <h2 id="hero-title">La table devient une arène de score.</h2>
             <p>
               Le desktop devient l'écran d'ambiance. Les joueurs scannent le QR, saisissent les manches sur mobile,
               et le podium pulse en direct autour de la table.
@@ -173,14 +177,14 @@
             <label class="toggle-row chaos-toggle-row" for="chaos-mode">
               <span>
                 <strong>Deck Chaos</strong>
-                <small>Ajoute des cartes random, des malus absurdes et des retournements violents.</small>
+                <small>Ajoute des cartes aléatoires, des contraintes de table et des retournements lisibles.</small>
               </span>
               <input id="chaos-mode" type="checkbox" />
             </label>
             <div class="field chaos-intensity-field">
-              <label for="chaos-intensity">Intensite chaos</label>
+              <label for="chaos-intensity">Intensité chaos</label>
               <select id="chaos-intensity">
-                <option value="extreme">Extreme</option>
+                <option value="extreme">Extrême</option>
               </select>
             </div>
           </div>

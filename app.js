@@ -209,6 +209,7 @@ async function startSyncSession() {
     sync.enabled = true;
     sync.role = "desktop";
     sync.sessionId = payload.sessionId;
+    sync.token = payload.controllerToken;
     sync.revision = payload.revision;
     sync.controllerUrl = payload.controllerUrl;
     state = normalizeState(payload.state);
@@ -607,8 +608,8 @@ function renderChaosCard() {
     elements.chaosCard.className = "chaos-card is-empty";
     elements.chaosCard.innerHTML = `
       <span class="chaos-card-kicker">Deck Chaos</span>
-      <strong>Mode desactive</strong>
-      <p>Active-le dans les parametres pour tirer une carte a chaque manche.</p>
+      <strong>Mode désactivé</strong>
+      <p>Active-le dans les paramètres pour tirer une carte à chaque manche.</p>
     `;
     return;
   }
@@ -618,7 +619,7 @@ function renderChaosCard() {
     elements.chaosCard.innerHTML = `
       <span class="chaos-card-kicker">Deck Chaos</span>
       <strong>En attente de table</strong>
-      <p>Ajoute au moins deux joueurs pour tirer la premiere carte.</p>
+      <p>Ajoute au moins deux joueurs pour tirer la première carte.</p>
     `;
     return;
   }
@@ -628,13 +629,13 @@ function renderChaosCard() {
   elements.chaosCard.className = `chaos-card rarity-${card.rarity}${isMasked ? " is-masked" : ""}`;
   elements.chaosCard.innerHTML = isMasked
     ? `
-      <span class="chaos-card-kicker">Surprise chaos prete</span>
-      <strong>Carte cachee jusqu'a la validation</strong>
-      <p>L'effet tombera apres le calcul de la manche. Oui, c'est injuste. C'est le principe.</p>
+      <span class="chaos-card-kicker">Surprise chaos prête</span>
+      <strong>Carte cachée jusqu'à la validation</strong>
+      <p>L'effet tombera après le calcul de la manche. Oui, c'est injuste. C'est le principe.</p>
     `
     : `
       <div class="chaos-card-header">
-        <span class="chaos-card-kicker">${escapeHtml(card.manual ? "Defi de table" : "Effet automatique")}</span>
+        <span class="chaos-card-kicker">${escapeHtml(card.manual ? "Défi de table" : "Effet automatique")}</span>
         <span class="chaos-rarity">${escapeHtml(card.rarity)}</span>
       </div>
       <strong>${escapeHtml(card.title)}</strong>

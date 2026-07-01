@@ -435,7 +435,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && match[2] === "actions") {
     const body = await readJson(req);
-    if (body.token && body.token !== session.controllerToken) {
+    if (body.token !== session.controllerToken) {
       sendJson(res, 403, { error: "Jeton contrôleur invalide." });
       return true;
     }

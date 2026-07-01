@@ -205,6 +205,7 @@
     const playerIds = new Set((players || []).map((player) => player.id));
     const validTargets = Array.isArray(input.targets?.players) ? input.targets.players.filter((playerId) => playerIds.has(playerId)) : [];
     if (validTargets.length < getRequiredTargetCount(card)) return null;
+    const revealedBeforeSubmit = typeof input.revealedBeforeSubmit === "boolean" ? input.revealedBeforeSubmit : card.timing === TIMING.BEFORE;
     return {
       id: card.id,
       title: card.title,
@@ -213,7 +214,7 @@
       category: card.category,
       description: card.description,
       manual: Boolean(card.manual),
-      revealedBeforeSubmit: Boolean(input.revealedBeforeSubmit),
+      revealedBeforeSubmit,
       targets: {
         players: validTargets,
       },
