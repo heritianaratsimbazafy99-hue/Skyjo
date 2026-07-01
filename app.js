@@ -41,6 +41,14 @@ const elements = {
   historyBody: document.querySelector("#history-body"),
   roundCardsHistory: document.querySelector("#round-cards-history"),
   toastRegion: document.querySelector("#toast-region"),
+  chaosRevealDialog: document.querySelector("#chaos-reveal-dialog"),
+  chaosRevealKicker: document.querySelector("#chaos-reveal-kicker"),
+  chaosRevealTitle: document.querySelector("#chaos-reveal-title"),
+  chaosRevealDescription: document.querySelector("#chaos-reveal-description"),
+  chaosRevealEffects: document.querySelector("#chaos-reveal-effects"),
+  chaosRevealImpacts: document.querySelector("#chaos-reveal-impacts"),
+  closeChaosReveal: document.querySelector("#close-chaos-reveal"),
+  continueChaosReveal: document.querySelector("#continue-chaos-reveal"),
   victoryDialog: document.querySelector("#victory-dialog"),
   victoryTitle: document.querySelector("#victory-title"),
   victoryCopy: document.querySelector("#victory-copy"),
@@ -67,6 +75,7 @@ let previousRankingIds = [];
 let localRoundDraft = ScoreDraft.normalizeRoundDraft(state.roundDraft, state.players);
 let closerOptionsSignature = "";
 let scoreInputsSignature = "";
+let lastChaosRevealRoundId = "";
 
 function createInitialState() {
   return {
@@ -303,6 +312,7 @@ function updateStateFromRemote(nextState, revision, meta) {
   }
   if (meta?.round && sync.role === "desktop") {
     pulseHero();
+    showChaosReveal(meta.round);
   }
 }
 
@@ -473,6 +483,7 @@ function handleActionMeta(action, meta) {
     const penaltyText = meta.round?.closerPenaltyApplied ? ` Pénalité appliquée à ${closer?.name}.` : "";
     const chaosText = meta.round?.chaos ? ` Chaos: ${meta.round.chaos.title}.` : "";
     showToast(`Manche ${meta.round?.number || state.rounds.length} validée.${penaltyText}${chaosText}`, meta.round?.closerPenaltyApplied ? "danger" : "success");
+    showChaosReveal(meta.round);
     pulseHero();
     return;
   }
@@ -1430,6 +1441,53 @@ function showToast(message, type = "info") {
   }, 4200);
 }
 
+function showChaosReveal(round) {
+  const reveal = ScoreViz.buildChaosReveal(round, state.players);
+  if (!reveal.shouldReveal || !elements.chaosRevealDialog) return;
+  if (round?.id && lastChaosRevealRoundId === round.id) return;
+  lastChaosRevealRoundId = round?.id || `${round?.number || Date.now()}`;
+
+  elements.chaosRevealKicker.textContent = reveal.kicker;
+  elements.chaosRevealTitle.textContent = reveal.title;
+  elements.chaosRevealDescription.textContent = reveal.description;
+  elements.chaosRevealEffects.innerHTML = reveal.effects.length
+    ? reveal.effects.map((effect) => `<span>${escapeHtml(effect)}</span>`).join("")
+    : "<span>Aucun effet de score automatique.</span>";
+  elements.chaosRevealImpacts.innerHTML = reveal.impacts.length
+    ? reveal.impacts
+        .map(
+          (impact) => `
+            <article class="chaos-impact-row" style="--player-color:${escapeHtml(impact.playerColor)}">
+              <div>
+                <strong>${escapeHtml(impact.playerName)}</strong>
+                <small>${escapeHtml(impact.detail)}</small>
+              </div>
+              <div class="chaos-impact-score">
+                <span>${escapeHtml(impact.raw)}</span>
+                <span aria-hidden="true">→</span>
+                <span>${escapeHtml(impact.final)}</span>
+                <b>${escapeHtml(impact.deltaLabel)}</b>
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    : `<div class="chaos-impact-empty">Aucun score modifié sur cette manche.</div>`;
+
+  if (!elements.chaosRevealDialog.open && typeof elements.chaosRevealDialog.showModal === "function") {
+    elements.chaosRevealDialog.showModal();
+    elements.closeChaosReveal?.focus();
+  } else {
+    elements.chaosRevealDialog.setAttribute("open", "");
+  }
+}
+
+function closeChaosReveal() {
+  if (elements.chaosRevealDialog?.open) {
+    elements.chaosRevealDialog.close();
+  }
+}
+
 function announceVictory() {
   const ranking = getRanking();
   const winner = ranking[0];
@@ -1645,6 +1703,9 @@ elements.resetGame.addEventListener("click", () => {
   if (state.rounds.length === 0 && state.players.length === 0) return;
   resetGame(true);
 });
+
+elements.closeChaosReveal.addEventListener("click", closeChaosReveal);
+elements.continueChaosReveal.addEventListener("click", closeChaosReveal);
 
 elements.closeVictory.addEventListener("click", () => {
   elements.victoryDialog.close();

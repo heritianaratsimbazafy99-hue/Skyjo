@@ -88,3 +88,54 @@ test("spreadLabelPositions separates direct labels while staying inside bounds",
     }
   );
 });
+
+test("buildChaosReveal summarizes after-card repercussions per affected player", () => {
+  const round = {
+    number: 2,
+    scores: { p1: 11, p2: 34, p3: 11 },
+    adjustedScores: { p1: -1, p2: 34, p3: 11 },
+    chaos: {
+      title: "Double fond",
+      timing: "after",
+      description: "Le deuxieme meilleur score de manche retire 12 points.",
+      effects: [{ players: ["p1"], message: "double fond -12" }],
+      scoreSteps: {
+        p1: {
+          raw: 11,
+          final: -1,
+          effects: ["double fond -12"],
+          steps: [
+            { label: "score brut", value: 11 },
+            { label: "effet chaos", value: -1 },
+          ],
+        },
+        p2: {
+          raw: 34,
+          final: 34,
+          effects: [],
+          steps: [{ label: "score brut", value: 34 }],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(ScoreViz.buildChaosReveal(round, players), {
+    shouldReveal: true,
+    title: "Double fond",
+    kicker: "Carte AFTER · Manche 2",
+    description: "Le deuxieme meilleur score de manche retire 12 points.",
+    effects: ["double fond -12"],
+    impacts: [
+      {
+        playerId: "p1",
+        playerName: "Mila",
+        playerColor: "#e11d48",
+        raw: 11,
+        final: -1,
+        delta: -12,
+        deltaLabel: "-12",
+        detail: "score brut 11 → effet chaos -1",
+      },
+    ],
+  });
+});

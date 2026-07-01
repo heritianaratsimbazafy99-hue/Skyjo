@@ -296,6 +296,31 @@
 
     <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
+    <dialog class="chaos-reveal-dialog" id="chaos-reveal-dialog" aria-labelledby="chaos-reveal-title">
+      <div class="chaos-reveal-content">
+        <button class="dialog-close" id="close-chaos-reveal" type="button" aria-label="Fermer l'effet Chaos">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+        <div class="chaos-reveal-cardmark" aria-hidden="true">
+          <span>?</span>
+        </div>
+        <p class="eyebrow" id="chaos-reveal-kicker">Carte AFTER</p>
+        <h2 id="chaos-reveal-title">Effet Chaos</h2>
+        <p id="chaos-reveal-description"></p>
+        <div class="chaos-reveal-effects" id="chaos-reveal-effects" aria-label="Effets appliqués"></div>
+        <div class="chaos-reveal-impacts" id="chaos-reveal-impacts" aria-label="Répercussions sur la manche"></div>
+        <button class="primary-button chaos-reveal-continue" id="continue-chaos-reveal" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          Continuer
+        </button>
+      </div>
+    </dialog>
+
     <dialog class="victory-dialog" id="victory-dialog" aria-labelledby="victory-title">
       <div class="victory-content">
         <button class="dialog-close" id="close-victory" type="button" aria-label="Fermer l'annonce">

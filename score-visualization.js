@@ -128,8 +128,68 @@
     }, {});
   }
 
+  function formatSignedNumber(value) {
+    const number = toFiniteNumber(value);
+    return number > 0 ? `+${number}` : String(number);
+  }
+
+  function buildScoreStepDetail(scoreStep, raw, final) {
+    const steps = Array.isArray(scoreStep?.steps) ? scoreStep.steps : [];
+    if (!steps.length) {
+      return `score brut ${raw} → score final ${final}`;
+    }
+
+    return steps
+      .map((step) => `${String(step.label || "score")} ${toFiniteNumber(step.value)}`)
+      .join(" → ");
+  }
+
+  function buildChaosReveal(round, players) {
+    const chaos = round?.chaos;
+    if (!chaos || chaos.timing !== "after") {
+      return { shouldReveal: false };
+    }
+
+    const effects = Array.isArray(chaos.effects)
+      ? chaos.effects.map((effect) => String(effect.message || effect.title || "")).filter(Boolean)
+      : [];
+    const scoreSteps = chaos.scoreSteps && typeof chaos.scoreSteps === "object" ? chaos.scoreSteps : {};
+    const playerList = Array.isArray(players) ? players : [];
+    const impacts = playerList
+      .map((player) => {
+        const step = scoreSteps[player.id] || {};
+        const raw = toFiniteNumber(step.raw ?? round.scores?.[player.id]);
+        const final = toFiniteNumber(step.final ?? round.adjustedScores?.[player.id], raw);
+        const playerEffects = Array.isArray(step.effects) ? step.effects : [];
+        const delta = final - raw;
+        if (delta === 0 && !playerEffects.length) return null;
+
+        return {
+          playerId: player.id,
+          playerName: player.name || "Joueur",
+          playerColor: player.color || "#0f766e",
+          raw,
+          final,
+          delta,
+          deltaLabel: formatSignedNumber(delta),
+          detail: buildScoreStepDetail(step, raw, final),
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      shouldReveal: true,
+      title: chaos.title || "Carte Chaos",
+      kicker: `Carte AFTER · Manche ${toFiniteNumber(round?.number, 0)}`,
+      description: chaos.description || "",
+      effects,
+      impacts,
+    };
+  }
+
   return {
     buildCumulativeSeries,
+    buildChaosReveal,
     getScoreTrendDomain,
     getRiskLevel,
     getTrendLayout,
