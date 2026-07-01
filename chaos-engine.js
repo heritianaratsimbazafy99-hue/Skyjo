@@ -25,6 +25,21 @@
     STRATEGIC: "strategic",
   };
 
+  const CHAOS_INTENSITY = {
+    EASY: "facile",
+    MEDIUM: "moyen",
+    STRONG: "fort",
+    EXTREME: "extreme",
+  };
+
+  const CHAOS_INTENSITIES = Object.values(CHAOS_INTENSITY);
+  const INTENSITY_RANK = {
+    [CHAOS_INTENSITY.EASY]: 0,
+    [CHAOS_INTENSITY.MEDIUM]: 1,
+    [CHAOS_INTENSITY.STRONG]: 2,
+    [CHAOS_INTENSITY.EXTREME]: 3,
+  };
+
   const CHAOS_CARDS = [
     { id: "fermeture-piegee", title: "Fermeture piegee", timing: TIMING.BEFORE, rarity: RARITY.RARE, category: CATEGORY.SCORE, weight: 7, description: "Si le joueur qui ferme n'est pas seul meilleur score de manche, son score positif est triple au lieu d'etre double." },
     { id: "dernier-souffle", title: "Dernier souffle", timing: TIMING.BEFORE, rarity: RARITY.COMMON, category: CATEGORY.ADAPTIVE, weight: 10, description: "Le dernier au classement avant la manche retire 15 points s'il fait la meilleure manche." },
@@ -73,6 +88,17 @@
     };
   }
 
+  function normalizeChaosIntensity(intensity) {
+    return CHAOS_INTENSITIES.includes(intensity) ? intensity : CHAOS_INTENSITY.EXTREME;
+  }
+
+  function getCardIntensity(card) {
+    if (card.rarity === RARITY.VERY_RARE) return CHAOS_INTENSITY.EXTREME;
+    if (card.category === CATEGORY.VIOLENT) return CHAOS_INTENSITY.STRONG;
+    if (card.rarity === RARITY.RARE) return CHAOS_INTENSITY.MEDIUM;
+    return CHAOS_INTENSITY.EASY;
+  }
+
   function normalizeChaosMode(input, rounds) {
     const defaults = createDefaultChaosMode();
     const usedFromRounds = Array.isArray(rounds)
@@ -81,7 +107,7 @@
     const usedRareCardIds = Array.from(new Set([...(Array.isArray(input?.usedRareCardIds) ? input.usedRareCardIds : []), ...usedFromRounds]));
     return {
       enabled: Boolean(input?.enabled),
-      intensity: input?.intensity === "extreme" ? "extreme" : defaults.intensity,
+      intensity: normalizeChaosIntensity(input?.intensity || defaults.intensity),
       revealMode: input?.revealMode === "mixed" ? "mixed" : defaults.revealMode,
       usedRareCardIds,
     };
@@ -120,6 +146,7 @@
     const previousCardId = getPreviousChaosCardId(state);
     return CHAOS_CARDS.filter((card) => {
       if (card.id === previousCardId) return false;
+      if (INTENSITY_RANK[getCardIntensity(card)] > INTENSITY_RANK[mode.intensity]) return false;
       if (card.rarity === RARITY.VERY_RARE && mode.usedRareCardIds.includes(card.id)) return false;
       if (card.requiresTwoRounds && (!Array.isArray(state?.rounds) || state.rounds.length < 2)) return false;
       return true;
@@ -670,6 +697,8 @@
   return {
     CATEGORY,
     CHAOS_CARDS,
+    CHAOS_INTENSITIES,
+    CHAOS_INTENSITY,
     RARITY,
     TIMING,
     createDefaultChaosMode,

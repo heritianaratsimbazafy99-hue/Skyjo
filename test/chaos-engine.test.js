@@ -15,6 +15,14 @@ test("normalizes missing chaos state without enabling it", () => {
   assert.deepEqual(Chaos.normalizeChaosMode(undefined, []), Chaos.createDefaultChaosMode());
 });
 
+test("normalizes every supported chaos intensity", () => {
+  for (const intensity of ["facile", "moyen", "fort", "extreme"]) {
+    assert.equal(Chaos.normalizeChaosMode({ enabled: true, intensity }, []).intensity, intensity);
+  }
+
+  assert.equal(Chaos.normalizeChaosMode({ enabled: true, intensity: "unknown" }, []).intensity, "extreme");
+});
+
 test("exports a 36-card Deck Chaos catalogue", () => {
   assert.equal(Chaos.CHAOS_CARDS.length, 36);
   assert.equal(new Set(Chaos.CHAOS_CARDS.map((card) => card.id)).size, 36);
@@ -130,6 +138,37 @@ test("excludes anti-domination before there are two previous rounds", () => {
     chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
   });
   assert.equal(Chaos.getEligibleCards(state).some((card) => card.id === "anti-domination"), false);
+});
+
+test("filters Deck Chaos cards by intensity", () => {
+  const eligibleIdsFor = (intensity) =>
+    new Set(Chaos.getEligibleCards(makeState({
+      rounds: [
+        { adjustedScores: { p1: 10, p2: 15, p3: 22 } },
+        { adjustedScores: { p1: 8, p2: 20, p3: 18 } },
+      ],
+      chaosMode: { enabled: true, intensity, revealMode: "mixed", usedRareCardIds: [] },
+    })).map((card) => card.id));
+
+  const facile = eligibleIdsFor("facile");
+  assert.equal(facile.has("taxe-du-pire"), true);
+  assert.equal(facile.has("score-miroir"), false);
+  assert.equal(facile.has("dette-instantanee"), false);
+  assert.equal(facile.has("inversion-totale"), false);
+
+  const moyen = eligibleIdsFor("moyen");
+  assert.equal(moyen.has("score-miroir"), true);
+  assert.equal(moyen.has("anti-domination"), true);
+  assert.equal(moyen.has("dette-instantanee"), false);
+  assert.equal(moyen.has("inversion-totale"), false);
+
+  const fort = eligibleIdsFor("fort");
+  assert.equal(fort.has("dette-instantanee"), true);
+  assert.equal(fort.has("leader-en-surtension"), true);
+  assert.equal(fort.has("inversion-totale"), false);
+
+  const extreme = eligibleIdsFor("extreme");
+  assert.equal(extreme.has("inversion-totale"), true);
 });
 
 function applyCard(cardId, rawScores, officialScores = rawScores, overrides = {}) {

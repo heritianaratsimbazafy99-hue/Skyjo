@@ -13,9 +13,9 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23f8fbff'/%3E%3Crect x='14' y='10' width='28' height='40' rx='5' fill='%23ff7866' transform='rotate(-10 28 30)'/%3E%3Crect x='24' y='14' width='28' height='40' rx='5' fill='%23ffd84d' transform='rotate(10 38 34)'/%3E%3Crect x='20' y='18' width='28' height='40' rx='5' fill='%232fc6b2'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/styles.css?v=10" />
-    <script defer src="/chaos-engine.js?v=2"></script>
-    <script defer src="/app.js?v=8"></script>
+    <link rel="stylesheet" href="/styles.css?v=11" />
+    <script defer src="/chaos-engine.js?v=3"></script>
+    <script defer src="/app.js?v=9"></script>
   </head>
   <body>
     <canvas id="confetti-canvas" aria-hidden="true"></canvas>
@@ -185,6 +185,9 @@
             <div class="field chaos-intensity-field">
               <label for="chaos-intensity">Intensité chaos</label>
               <select id="chaos-intensity">
+                <option value="facile">Facile</option>
+                <option value="moyen">Moyen</option>
+                <option value="fort">Fort</option>
                 <option value="extreme">Extrême</option>
               </select>
             </div>

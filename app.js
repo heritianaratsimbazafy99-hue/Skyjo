@@ -354,12 +354,12 @@ function applyAction(currentState, action) {
       next.chaosMode = SkyjoChaos.normalizeChaosMode({
         ...next.chaosMode,
         enabled: Boolean(action.enabled),
-        intensity: "extreme",
+        intensity: action.intensity || next.chaosMode.intensity,
         revealMode: "mixed",
       }, next.rounds);
       next.activeChaosCard = null;
       ensureChaosCardForNextRound(next);
-      meta.message = next.chaosMode.enabled ? "Deck Chaos active. La table entre en zone instable." : "Deck Chaos desactive.";
+      meta.message = next.chaosMode.enabled ? `Deck Chaos ${getChaosIntensityLabel(next.chaosMode.intensity).toLowerCase()} activé.` : "Deck Chaos désactivé.";
       break;
     }
     case "SUBMIT_ROUND": {
@@ -567,6 +567,23 @@ function getAverage(playerId) {
   return total / state.rounds.length;
 }
 
+function getChaosIntensityLabel(intensity) {
+  return {
+    facile: "Facile",
+    moyen: "Moyen",
+    fort: "Fort",
+    extreme: "Extrême",
+  }[intensity] || "Extrême";
+}
+
+function getChaosRarityLabel(rarity) {
+  return {
+    common: "commune",
+    rare: "rare",
+    "very-rare": "très rare",
+  }[rarity] || rarity;
+}
+
 function render() {
   elements.targetScore.value = state.targetScore;
   elements.closerPenalty.checked = state.doubleCloserPenalty;
@@ -626,17 +643,19 @@ function renderChaosCard() {
 
   const targetNames = getChaosTargetNames(card);
   const isMasked = card.timing === "after" && !card.revealedBeforeSubmit;
-  elements.chaosCard.className = `chaos-card rarity-${card.rarity}${isMasked ? " is-masked" : ""}`;
+  const intensity = state.chaosMode.intensity || "extreme";
+  const intensityLabel = getChaosIntensityLabel(intensity);
+  elements.chaosCard.className = `chaos-card rarity-${card.rarity} intensity-${intensity}${isMasked ? " is-masked" : ""}`;
   elements.chaosCard.innerHTML = isMasked
     ? `
-      <span class="chaos-card-kicker">Surprise chaos prête</span>
+      <span class="chaos-card-kicker">Surprise chaos ${escapeHtml(intensityLabel.toLowerCase())} prête</span>
       <strong>Carte cachée jusqu'à la validation</strong>
       <p>L'effet tombera après le calcul de la manche. Oui, c'est injuste. C'est le principe.</p>
     `
     : `
       <div class="chaos-card-header">
         <span class="chaos-card-kicker">${escapeHtml(card.manual ? "Défi de table" : "Effet automatique")}</span>
-        <span class="chaos-rarity">${escapeHtml(card.rarity)}</span>
+        <span class="chaos-rarity">${escapeHtml(intensityLabel)} · ${escapeHtml(getChaosRarityLabel(card.rarity))}</span>
       </div>
       <strong>${escapeHtml(card.title)}</strong>
       <p>${escapeHtml(card.description)}</p>

@@ -1415,11 +1415,49 @@ input::placeholder {
   gap: 10px;
   min-height: 156px;
   overflow: hidden;
+  isolation: isolate;
   border: 3px solid var(--color-coral);
   border-radius: var(--radius-md);
   background: linear-gradient(135deg, oklch(0.96 0.055 28), oklch(0.94 0.085 88));
   color: var(--color-foreground);
   padding: var(--space-4);
+}
+
+.chaos-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.chaos-card:not(.is-empty)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.2;
+  background: linear-gradient(110deg, transparent 0 34%, oklch(1 0 0 / 0.46) 46%, transparent 58%);
+  transform: translateX(-115%);
+  animation: chaos-sweep 7s ease-in-out infinite;
+}
+
+.chaos-card.intensity-facile::after {
+  animation-duration: 10s;
+  opacity: 0.12;
+}
+
+.chaos-card.intensity-moyen::after {
+  animation-duration: 8s;
+  opacity: 0.18;
+}
+
+.chaos-card.intensity-fort::after {
+  animation-duration: 6s;
+  opacity: 0.24;
+}
+
+.chaos-card.intensity-extreme::after {
+  animation-duration: 4.8s;
+  opacity: 0.3;
 }
 
 .chaos-card.is-empty {
@@ -1469,6 +1507,25 @@ input::placeholder {
 .chaos-card small {
   margin: 0;
   color: var(--color-muted);
+}
+
+@keyframes chaos-sweep {
+  0%,
+  42% {
+    transform: translateX(-115%);
+  }
+
+  72%,
+  100% {
+    transform: translateX(115%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chaos-card:not(.is-empty)::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 body.controller-mode .hero-band,

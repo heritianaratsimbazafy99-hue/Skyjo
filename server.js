@@ -25,6 +25,15 @@ function createInitialState() {
   };
 }
 
+function getChaosIntensityLabel(intensity) {
+  return {
+    facile: "Facile",
+    moyen: "Moyen",
+    fort: "Fort",
+    extreme: "Extrême",
+  }[intensity] || "Extrême";
+}
+
 function uid(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
 }
@@ -189,12 +198,12 @@ function applyAction(currentState, action) {
       next.chaosMode = SkyjoChaos.normalizeChaosMode({
         ...next.chaosMode,
         enabled: Boolean(action.enabled),
-        intensity: "extreme",
+        intensity: action.intensity || next.chaosMode.intensity,
         revealMode: "mixed",
       }, next.rounds);
       next.activeChaosCard = null;
       ensureChaosCardForNextRound(next);
-      meta.message = next.chaosMode.enabled ? "Deck Chaos active. La table entre en zone instable." : "Deck Chaos desactive.";
+      meta.message = next.chaosMode.enabled ? `Deck Chaos ${getChaosIntensityLabel(next.chaosMode.intensity).toLowerCase()} activé.` : "Deck Chaos désactivé.";
       break;
     }
     case "SUBMIT_ROUND": {
