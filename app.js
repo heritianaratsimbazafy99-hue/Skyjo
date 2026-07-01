@@ -1,3 +1,4 @@
+const SkyjoChaos = window.SkyjoChaos;
 const STORAGE_KEY = "skyjo-score-arena-state-v2";
 const COLORS = ["#e11d48", "#2563eb", "#0f766e", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#65a30d"];
 
@@ -63,6 +64,10 @@ function createInitialState() {
     rounds: [],
     targetScore: 100,
     doubleCloserPenalty: true,
+    chaosMode: SkyjoChaos.createDefaultChaosMode(),
+    activeChaosCard: null,
+    gameMasterId: null,
+    roundDraft: createEmptyRoundDraft(),
     gameOver: false,
   };
 }
@@ -80,15 +85,24 @@ function loadState() {
 }
 
 function normalizeState(input) {
-  return {
+  const players = Array.isArray(input.players) ? input.players : [];
+  const rounds = Array.isArray(input.rounds) ? input.rounds : [];
+  const normalized = {
     ...createInitialState(),
     ...input,
-    players: Array.isArray(input.players) ? input.players : [],
-    rounds: Array.isArray(input.rounds) ? input.rounds : [],
+    players,
+    rounds,
     targetScore: Number(input.targetScore) || 100,
     doubleCloserPenalty: input.doubleCloserPenalty !== false,
+    chaosMode: SkyjoChaos.normalizeChaosMode(input.chaosMode, rounds),
+    activeChaosCard: SkyjoChaos.normalizeActiveChaosCard(input.activeChaosCard, players),
+    gameMasterId: players.some((player) => player.id === input.gameMasterId) ? input.gameMasterId : null,
+    roundDraft: input.roundDraft && typeof input.roundDraft === "object" ? input.roundDraft : createEmptyRoundDraft(),
     gameOver: Boolean(input.gameOver),
   };
+  ensureGameMaster(normalized, false);
+  ensureChaosCardForNextRound(normalized);
+  return normalized;
 }
 
 function saveState() {
@@ -107,6 +121,48 @@ function sanitizeName(name) {
 
 function getPlayerColor(index) {
   return COLORS[index % COLORS.length];
+}
+
+function createEmptyRoundDraft() {
+  return {
+    closerId: "",
+    scores: {},
+  };
+}
+
+function pickRandomGameMaster(players) {
+  if (!Array.isArray(players) || players.length < 2) return null;
+  return players[Math.floor(Math.random() * players.length)]?.id || null;
+}
+
+function ensureGameMaster(targetState, randomize = true) {
+  if (!Array.isArray(targetState.players) || targetState.players.length < 2) {
+    targetState.gameMasterId = null;
+    return targetState;
+  }
+
+  if (targetState.players.some((player) => player.id === targetState.gameMasterId)) {
+    return targetState;
+  }
+
+  targetState.gameMasterId = randomize ? pickRandomGameMaster(targetState.players) : targetState.players[0]?.id || null;
+  return targetState;
+}
+
+function ensureChaosCardForNextRound(targetState) {
+  targetState.chaosMode = SkyjoChaos.normalizeChaosMode(targetState.chaosMode, targetState.rounds);
+
+  if (!SkyjoChaos.isChaosEnabled(targetState)) {
+    targetState.activeChaosCard = null;
+    return targetState;
+  }
+
+  targetState.activeChaosCard = SkyjoChaos.normalizeActiveChaosCard(targetState.activeChaosCard, targetState.players);
+  if (!targetState.activeChaosCard) {
+    targetState.activeChaosCard = SkyjoChaos.selectNextChaosCard(targetState);
+  }
+
+  return targetState;
 }
 
 function parseControllerRoute() {
@@ -260,12 +316,16 @@ function applyAction(currentState, action) {
         return { error: `${name} est déjà dans la partie.` };
       }
       next.players.push({ id: uid("player"), name, color: getPlayerColor(next.players.length) });
+      ensureGameMaster(next);
+      ensureChaosCardForNextRound(next);
       meta.message = `${name} rejoint la table.`;
       break;
     }
     case "REMOVE_PLAYER": {
       if (next.rounds.length > 0) return { error: "Impossible de retirer un joueur après la première manche. Lance une nouvelle partie." };
       next.players = next.players.filter((player) => player.id !== action.playerId);
+      ensureGameMaster(next);
+      ensureChaosCardForNextRound(next);
       break;
     }
     case "SET_TARGET_SCORE": {
@@ -278,6 +338,18 @@ function applyAction(currentState, action) {
     case "SET_CLOSER_PENALTY": {
       next.doubleCloserPenalty = Boolean(action.enabled);
       meta.message = next.doubleCloserPenalty ? "Pénalité officielle activée." : "Pénalité officielle désactivée pour cette table.";
+      break;
+    }
+    case "SET_CHAOS_MODE": {
+      next.chaosMode = SkyjoChaos.normalizeChaosMode({
+        ...next.chaosMode,
+        enabled: Boolean(action.enabled),
+        intensity: "extreme",
+        revealMode: "mixed",
+      }, next.rounds);
+      next.activeChaosCard = null;
+      ensureChaosCardForNextRound(next);
+      meta.message = next.chaosMode.enabled ? "Deck Chaos active. La table entre en zone instable." : "Deck Chaos desactive.";
       break;
     }
     case "SUBMIT_ROUND": {
@@ -294,7 +366,14 @@ function applyAction(currentState, action) {
 
       const round = computeRound(next, rawScores, action.closerId);
       next.rounds.push(round);
+      next.chaosMode = SkyjoChaos.normalizeChaosMode({
+        ...next.chaosMode,
+        usedRareCardIds: round.chaos?.cardId ? SkyjoChaos.normalizeChaosMode(next.chaosMode, [...next.rounds]).usedRareCardIds : next.chaosMode.usedRareCardIds,
+      }, next.rounds);
+      next.roundDraft = createEmptyRoundDraft();
       next.gameOver = Object.values(getTotals(next)).some((score) => score >= next.targetScore);
+      next.activeChaosCard = null;
+      ensureChaosCardForNextRound(next);
       meta.round = round;
       meta.gameOver = next.gameOver;
       break;
@@ -303,18 +382,29 @@ function applyAction(currentState, action) {
       if (next.rounds.length === 0) return { error: "Aucune manche à annuler." };
       const removed = next.rounds.pop();
       next.gameOver = false;
+      next.chaosMode = SkyjoChaos.normalizeChaosMode(next.chaosMode, next.rounds);
+      next.activeChaosCard = null;
+      ensureChaosCardForNextRound(next);
       meta.message = `Manche ${removed.number} annulée.`;
       break;
     }
     case "RESET_GAME": {
       const keepPlayers = action.keepPlayers !== false;
+      const players = keepPlayers ? next.players.map((player, index) => ({ ...player, color: getPlayerColor(index) })) : [];
+      const targetScore = Number(action.targetScore) || next.targetScore || 100;
+      const doubleCloserPenalty = action.doubleCloserPenalty ?? next.doubleCloserPenalty;
+      const resetState = {
+        ...createInitialState(),
+        players,
+        targetScore,
+        doubleCloserPenalty,
+        chaosMode: SkyjoChaos.normalizeChaosMode(action.chaosMode || next.chaosMode, []),
+        gameMasterId: keepPlayers ? pickRandomGameMaster(players) : null,
+        roundDraft: createEmptyRoundDraft(),
+      };
+      ensureChaosCardForNextRound(resetState);
       return {
-        state: {
-          ...createInitialState(),
-          players: keepPlayers ? next.players.map((player, index) => ({ ...player, color: getPlayerColor(index) })) : [],
-          targetScore: Number(action.targetScore) || next.targetScore || 100,
-          doubleCloserPenalty: action.doubleCloserPenalty ?? next.doubleCloserPenalty,
-        },
+        state: resetState,
         meta: { message: keepPlayers ? "Nouvelle partie lancée avec les mêmes joueurs." : "Table remise à zéro." },
       };
     }
@@ -353,29 +443,44 @@ function resetGame(keepPlayers = true) {
     keepPlayers,
     targetScore: Number(elements.targetScore.value) || state.targetScore || 100,
     doubleCloserPenalty: elements.closerPenalty.checked,
+    chaosMode: state.chaosMode,
   });
 }
 
 function computeRound(currentState, rawScores, closerId) {
-  const adjustedScores = { ...rawScores };
+  const officialScores = { ...rawScores };
   let closerPenaltyApplied = false;
+  const announcerId = currentState.gameMasterId || null;
 
   if (currentState.doubleCloserPenalty && closerId) {
     const closerScore = rawScores[closerId];
     const hasEqualOrLowerOpponent = currentState.players.some((player) => player.id !== closerId && rawScores[player.id] <= closerScore);
     if (closerScore > 0 && hasEqualOrLowerOpponent) {
-      adjustedScores[closerId] = closerScore * 2;
+      officialScores[closerId] = closerScore * 2;
       closerPenaltyApplied = true;
     }
   }
+
+  const chaosResult = SkyjoChaos.resolveChaosForRound({
+    stateBeforeRound: currentState,
+    rawScores,
+    officialScores,
+    closerId,
+    closerPenaltyApplied,
+    activeChaosCard: currentState.activeChaosCard,
+  });
 
   return {
     id: uid("round"),
     number: currentState.rounds.length + 1,
     closerId,
+    announcerId,
     scores: rawScores,
-    adjustedScores,
+    scoreAnnouncements: currentState.players.map((player) => ({ playerId: player.id, score: rawScores[player.id] })),
+    officialAdjustedScores: officialScores,
+    adjustedScores: chaosResult.adjustedScores,
     closerPenaltyApplied,
+    chaos: chaosResult.chaos,
     createdAt: new Date().toISOString(),
   };
 }
