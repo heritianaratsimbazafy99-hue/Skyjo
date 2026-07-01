@@ -210,6 +210,415 @@
     return selected ? snapshotCard(selected, state, random) : null;
   }
 
+  function cloneScores(scores) {
+    return Object.fromEntries(Object.entries(scores || {}).map(([playerId, score]) => [playerId, Number(score) || 0]));
+  }
+
+  function addEffect(effects, card, message, players = [], type = "score") {
+    effects.push({
+      cardId: card.id,
+      title: card.title,
+      type,
+      players,
+      message,
+    });
+  }
+
+  function getBestIds(scores) {
+    const entries = Object.entries(scores);
+    const best = Math.min(...entries.map(([, score]) => score));
+    return entries.filter(([, score]) => score === best).map(([playerId]) => playerId);
+  }
+
+  function getWorstIds(scores) {
+    const entries = Object.entries(scores);
+    const worst = Math.max(...entries.map(([, score]) => score));
+    return entries.filter(([, score]) => score === worst).map(([playerId]) => playerId);
+  }
+
+  function getSecondBestId(scores) {
+    const uniqueScores = Array.from(new Set(Object.values(scores))).sort((a, b) => a - b);
+    if (uniqueScores.length < 2) return null;
+    const second = uniqueScores[1];
+    const match = Object.entries(scores).find(([, score]) => score === second);
+    return match ? match[0] : null;
+  }
+
+  function averageExcluding(scores, excludedPlayerId) {
+    const values = Object.entries(scores).filter(([playerId]) => playerId !== excludedPlayerId).map(([, score]) => score);
+    if (!values.length) return scores[excludedPlayerId] ?? 0;
+    return Math.round(values.reduce((sum, score) => sum + score, 0) / values.length);
+  }
+
+  function hasCloserFailed(rawScores, closerId) {
+    const closerScore = rawScores[closerId];
+    return Number(closerScore) > 0 && Object.entries(rawScores).some(([playerId, score]) => playerId !== closerId && score <= closerScore);
+  }
+
+  function findLastRoundWinnerId(round) {
+    if (!round?.adjustedScores) return null;
+    const bestIds = getBestIds(round.adjustedScores);
+    return bestIds.length === 1 ? bestIds[0] : null;
+  }
+
+  function createScoreSteps(rawScores, officialScores, finalScores, effects) {
+    const steps = {};
+    for (const playerId of Object.keys(rawScores)) {
+      const playerEffects = effects.filter((effect) => effect.players.includes(playerId)).map((effect) => effect.message);
+      steps[playerId] = {
+        raw: rawScores[playerId],
+        official: officialScores[playerId],
+        final: finalScores[playerId],
+        effects: playerEffects,
+      };
+    }
+    return steps;
+  }
+
+  function resolveChaosForRound(input) {
+    const rawScores = cloneScores(input.rawScores);
+    const officialScores = cloneScores(input.officialScores);
+    const adjustedScores = cloneScores(input.officialScores);
+    const stateBeforeRound = input.stateBeforeRound || {};
+    const card = normalizeActiveChaosCard(input.activeChaosCard, stateBeforeRound.players || []);
+    const effects = [];
+    const random = typeof input.random === "function" ? input.random : Math.random;
+    const closerId = input.closerId;
+    const ranking = getRanking(stateBeforeRound);
+    const leaderId = ranking[0]?.id || null;
+    const lastId = ranking.at(-1)?.id || null;
+    const runnerUpId = ranking[1]?.id || null;
+
+    if (!card) {
+      return {
+        adjustedScores,
+        chaos: null,
+        effects,
+        scoreSteps: createScoreSteps(rawScores, officialScores, adjustedScores, effects),
+        usedRareCardIds: normalizeChaosMode(stateBeforeRound.chaosMode, stateBeforeRound.rounds || []).usedRareCardIds,
+      };
+    }
+
+    const targetPlayers = Array.isArray(card.targets?.players) ? card.targets.players : [];
+    const bestIds = () => getBestIds(adjustedScores);
+    const worstIds = () => getWorstIds(adjustedScores);
+    const bestSingle = () => (bestIds().length === 1 ? bestIds()[0] : null);
+    const worstSingle = () => (worstIds().length === 1 ? worstIds()[0] : null);
+
+    switch (card.id) {
+      case "fermeture-piegee": {
+        if (closerId && hasCloserFailed(rawScores, closerId)) {
+          adjustedScores[closerId] = rawScores[closerId] * 3;
+          addEffect(effects, card, "fermeture piegee", [closerId]);
+        }
+        break;
+      }
+      case "dernier-souffle": {
+        if (lastId && bestIds().includes(lastId)) {
+          adjustedScores[lastId] -= 15;
+          addEffect(effects, card, "dernier souffle -15", [lastId]);
+        }
+        break;
+      }
+      case "chasse-au-leader": {
+        const sorted = Object.entries(adjustedScores).sort((a, b) => a[1] - b[1]);
+        const topTwo = sorted.slice(0, 2).map(([playerId]) => playerId);
+        if (leaderId && !topTwo.includes(leaderId)) {
+          adjustedScores[leaderId] += 10;
+          addEffect(effects, card, "chasse au leader +10", [leaderId]);
+        }
+        break;
+      }
+      case "zero-heroique": {
+        for (const [playerId, score] of Object.entries(adjustedScores)) {
+          if (score === 0) {
+            adjustedScores[playerId] = -10;
+            addEffect(effects, card, "zero heroique -10", [playerId]);
+          }
+        }
+        break;
+      }
+      case "interdit-de-fermer": {
+        const targetId = targetPlayers[0];
+        if (targetId && targetId === closerId) {
+          adjustedScores[targetId] += 20;
+          addEffect(effects, card, "interdit de fermer +20", [targetId]);
+        }
+        break;
+      }
+      case "mini-manche-nucleaire": {
+        for (const [playerId, score] of Object.entries(adjustedScores)) {
+          if (score > 0 && score <= 10) {
+            adjustedScores[playerId] = 0;
+            addEffect(effects, card, "mini-manche nucleaire score bas a 0", [playerId]);
+          } else if (score > 25) {
+            adjustedScores[playerId] += 10;
+            addEffect(effects, card, "mini-manche nucleaire +10", [playerId]);
+          }
+        }
+        break;
+      }
+      case "tout-ou-rien": {
+        const best = bestSingle();
+        const worst = worstSingle();
+        if (best) {
+          adjustedScores[best] -= 8;
+          addEffect(effects, card, "tout ou rien -8", [best]);
+        }
+        if (worst && worst !== best) {
+          adjustedScores[worst] += 8;
+          addEffect(effects, card, "tout ou rien +8", [worst]);
+        }
+        break;
+      }
+      case "annonce-sous-pression":
+      case "applaudissements-obligatoires":
+      case "mauvaise-foi-officielle":
+      case "pari-de-fermeture":
+      case "assurance-anti-catastrophe":
+      case "contre-leader": {
+        addEffect(effects, card, card.description, targetPlayers, "manual");
+        break;
+      }
+      case "score-miroir": {
+        const [first, second] = targetPlayers;
+        if (first && second) {
+          const firstScore = adjustedScores[first];
+          adjustedScores[first] = adjustedScores[second];
+          adjustedScores[second] = firstScore;
+          addEffect(effects, card, "score miroir", [first, second]);
+        }
+        break;
+      }
+      case "taxe-du-pire": {
+        for (const playerId of worstIds()) {
+          adjustedScores[playerId] += 12;
+          addEffect(effects, card, "taxe du pire +12", [playerId]);
+        }
+        break;
+      }
+      case "hold-up": {
+        const best = bestSingle();
+        const worst = worstSingle();
+        if (best) {
+          adjustedScores[best] -= 8;
+          addEffect(effects, card, "hold-up -8", [best]);
+        }
+        if (worst && worst !== best) {
+          adjustedScores[worst] += 8;
+          addEffect(effects, card, "hold-up +8", [worst]);
+        }
+        break;
+      }
+      case "egalite-explosive": {
+        const counts = Object.values(adjustedScores).reduce((map, score) => {
+          map.set(score, (map.get(score) || 0) + 1);
+          return map;
+        }, new Map());
+        for (const [playerId, score] of Object.entries(adjustedScores)) {
+          if ((counts.get(score) || 0) >= 2) {
+            adjustedScores[playerId] += 5;
+            addEffect(effects, card, "egalite explosive +5", [playerId]);
+          }
+        }
+        break;
+      }
+      case "remboursement-surprise": {
+        const targetId = targetPlayers[0];
+        if (targetId && targetId !== leaderId) {
+          adjustedScores[targetId] -= 10;
+          addEffect(effects, card, "remboursement surprise -10", [targetId]);
+        }
+        break;
+      }
+      case "double-fond": {
+        const secondBestId = getSecondBestId(adjustedScores);
+        if (secondBestId) {
+          adjustedScores[secondBestId] -= 12;
+          addEffect(effects, card, "double fond -12", [secondBestId]);
+        }
+        break;
+      }
+      case "retour-de-flamme": {
+        if (input.closerPenaltyApplied) {
+          const opponents = Object.fromEntries(Object.entries(adjustedScores).filter(([playerId]) => playerId !== closerId));
+          const bestOpponent = getBestIds(opponents)[0];
+          if (bestOpponent) {
+            adjustedScores[bestOpponent] -= 10;
+            addEffect(effects, card, "retour de flamme -10", [bestOpponent]);
+          }
+        }
+        break;
+      }
+      case "derniere-place-protegee": {
+        if (lastId && worstIds().includes(lastId)) {
+          adjustedScores[lastId] = officialScores[lastId];
+          addEffect(effects, card, "derniere place protegee", [lastId]);
+        }
+        break;
+      }
+      case "couronne-lourde": {
+        if (leaderId) {
+          adjustedScores[leaderId] += 7;
+          addEffect(effects, card, "couronne lourde +7", [leaderId]);
+        }
+        break;
+      }
+      case "sous-marin": {
+        if (runnerUpId && leaderId && adjustedScores[runnerUpId] < adjustedScores[leaderId]) {
+          adjustedScores[runnerUpId] -= 5;
+          addEffect(effects, card, "sous-marin -5", [runnerUpId]);
+        }
+        break;
+      }
+      case "rattrapage-brutal": {
+        if (leaderId && lastId) {
+          const totals = getTotals(stateBeforeRound);
+          if ((totals[lastId] ?? 0) - (totals[leaderId] ?? 0) > 50) {
+            adjustedScores[lastId] -= 20;
+            addEffect(effects, card, "rattrapage brutal -20", [lastId]);
+          }
+        }
+        break;
+      }
+      case "anti-domination": {
+        const lastTwoWinners = (stateBeforeRound.rounds || []).slice(-2).map(findLastRoundWinnerId);
+        if (lastTwoWinners[0] && lastTwoWinners[0] === lastTwoWinners[1]) {
+          adjustedScores[lastTwoWinners[0]] += 10;
+          addEffect(effects, card, "anti-domination +10", [lastTwoWinners[0]]);
+        }
+        break;
+      }
+      case "inversion-totale": {
+        const best = bestSingle();
+        const worst = worstSingle();
+        if (best && worst && best !== worst) {
+          const bestScore = adjustedScores[best];
+          adjustedScores[best] = adjustedScores[worst];
+          adjustedScores[worst] = bestScore;
+          addEffect(effects, card, "inversion totale", [best, worst]);
+        }
+        break;
+      }
+      case "banque-cassee": {
+        for (const playerId of Object.keys(adjustedScores)) {
+          adjustedScores[playerId] = Math.floor(adjustedScores[playerId] / 2);
+          addEffect(effects, card, "banque cassee /2", [playerId]);
+        }
+        break;
+      }
+      case "jackpot-noir": {
+        const targetId = targetPlayers[0];
+        if (targetId) {
+          adjustedScores[targetId] *= 2;
+          addEffect(effects, card, "jackpot noir x2", [targetId]);
+        }
+        break;
+      }
+      case "reset-de-panique": {
+        const worst = worstSingle();
+        if (worst) {
+          adjustedScores[worst] = averageExcluding(adjustedScores, worst);
+          addEffect(effects, card, "reset de panique", [worst]);
+        }
+        break;
+      }
+      case "dette-instantanee": {
+        for (const playerId of worstIds()) {
+          adjustedScores[playerId] += playerId === closerId ? 30 : 20;
+          addEffect(effects, card, playerId === closerId ? "dette instantanee +30" : "dette instantanee +20", [playerId]);
+        }
+        break;
+      }
+      case "leader-en-surtension": {
+        if (leaderId) {
+          const otherScores = Object.entries(adjustedScores).filter(([playerId]) => playerId !== leaderId).map(([, score]) => score);
+          const average = otherScores.reduce((sum, score) => sum + score, 0) / Math.max(1, otherScores.length);
+          if (adjustedScores[leaderId] > average) {
+            adjustedScores[leaderId] *= 2;
+            addEffect(effects, card, "leader en surtension x2", [leaderId]);
+          }
+        }
+        break;
+      }
+      case "erreur-fatale": {
+        for (const [playerId, score] of Object.entries(adjustedScores)) {
+          if (score >= 30) {
+            adjustedScores[playerId] += 15;
+            addEffect(effects, card, "erreur fatale +15", [playerId]);
+          }
+        }
+        break;
+      }
+      case "fermeture-kamikaze": {
+        if (closerId && hasCloserFailed(rawScores, closerId)) {
+          adjustedScores[closerId] = rawScores[closerId] * 3 + 5;
+          addEffect(effects, card, "fermeture kamikaze x3 +5", [closerId]);
+        }
+        break;
+      }
+      case "banquier-a-glisse": {
+        const targetId = targetPlayers[0];
+        if (targetId) {
+          const delta = random() < 0.5 ? -10 : 10;
+          adjustedScores[targetId] += delta;
+          addEffect(effects, card, `banquier a glisse ${delta > 0 ? "+10" : "-10"}`, [targetId]);
+        }
+        break;
+      }
+      case "justice-approximative": {
+        const targetId = targetPlayers[0];
+        if (targetId) {
+          adjustedScores[targetId] = averageExcluding(adjustedScores, targetId);
+          addEffect(effects, card, "justice approximative", [targetId]);
+        }
+        break;
+      }
+      case "cible-prioritaire": {
+        const targetId = targetPlayers[0];
+        if (targetId) {
+          const targetScore = adjustedScores[targetId];
+          for (const [playerId, score] of Object.entries(adjustedScores)) {
+            if (playerId === targetId) continue;
+            if (score < targetScore) {
+              adjustedScores[playerId] -= 5;
+              addEffect(effects, card, "cible prioritaire -5", [playerId]);
+            } else if (score > targetScore) {
+              adjustedScores[playerId] += 5;
+              addEffect(effects, card, "cible prioritaire +5", [playerId]);
+            }
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    const usedRareCardIds = normalizeChaosMode(stateBeforeRound.chaosMode, stateBeforeRound.rounds || []).usedRareCardIds;
+    const nextUsedRareCardIds = card.rarity === RARITY.VERY_RARE ? Array.from(new Set([...usedRareCardIds, card.id])) : usedRareCardIds;
+    const chaos = {
+      cardId: card.id,
+      title: card.title,
+      timing: card.timing,
+      category: card.category,
+      rarity: card.rarity,
+      description: card.description,
+      revealedBeforeSubmit: card.revealedBeforeSubmit,
+      targets: card.targets,
+      effects,
+      scoreSteps: createScoreSteps(rawScores, officialScores, adjustedScores, effects),
+    };
+
+    return {
+      adjustedScores,
+      chaos,
+      effects,
+      scoreSteps: chaos.scoreSteps,
+      usedRareCardIds: nextUsedRareCardIds,
+    };
+  }
+
   return {
     CATEGORY,
     CHAOS_CARDS,
@@ -223,6 +632,7 @@
     isChaosEnabled,
     normalizeActiveChaosCard,
     normalizeChaosMode,
+    resolveChaosForRound,
     selectNextChaosCard,
   };
 });

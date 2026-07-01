@@ -81,3 +81,54 @@ test("excludes anti-domination before there are two previous rounds", () => {
   });
   assert.equal(Chaos.getEligibleCards(state).some((card) => card.id === "anti-domination"), false);
 });
+
+function applyCard(cardId, rawScores, officialScores = rawScores, overrides = {}) {
+  const state = makeState({
+    rounds: overrides.rounds || [],
+    chaosMode: { enabled: true, intensity: "extreme", revealMode: "mixed", usedRareCardIds: [] },
+  });
+  const card = Chaos.selectNextChaosCard(state, {
+    forceCardId: cardId,
+    random: overrides.random || (() => 0),
+  });
+  return Chaos.resolveChaosForRound({
+    stateBeforeRound: state,
+    rawScores,
+    officialScores,
+    closerId: overrides.closerId || "p1",
+    closerPenaltyApplied: Boolean(overrides.closerPenaltyApplied),
+    activeChaosCard: card,
+    random: overrides.random || (() => 0),
+  });
+}
+
+test("zero heroique turns zero scores into -10", () => {
+  const result = applyCard("zero-heroique", { p1: 0, p2: 8, p3: 14 });
+  assert.equal(result.adjustedScores.p1, -10);
+  assert.equal(result.effects[0].cardId, "zero-heroique");
+});
+
+test("fermeture piegee upgrades official closer penalty from double to triple", () => {
+  const result = applyCard("fermeture-piegee", { p1: 12, p2: 8, p3: 20 }, { p1: 24, p2: 8, p3: 20 }, {
+    closerId: "p1",
+    closerPenaltyApplied: true,
+  });
+  assert.equal(result.adjustedScores.p1, 36);
+});
+
+test("score miroir swaps two resolved player scores", () => {
+  const result = applyCard("score-miroir", { p1: 5, p2: 22, p3: 9 });
+  assert.deepEqual(result.adjustedScores, { p1: 22, p2: 5, p3: 9 });
+});
+
+test("manual cards keep scores but produce an explanation", () => {
+  const result = applyCard("annonce-sous-pression", { p1: 5, p2: 12, p3: 9 });
+  assert.deepEqual(result.adjustedScores, { p1: 5, p2: 12, p3: 9 });
+  assert.equal(result.effects[0].type, "manual");
+});
+
+test("very rare cards are returned for usedRareCardIds", () => {
+  const result = applyCard("banque-cassee", { p1: 5, p2: 21, p3: -3 });
+  assert.deepEqual(result.adjustedScores, { p1: 2, p2: 10, p3: -2 });
+  assert.deepEqual(result.usedRareCardIds, ["banque-cassee"]);
+});
