@@ -15,6 +15,7 @@
     />
     <link rel="stylesheet" href="/styles.css?v=11" />
     <script defer src="/chaos-engine.js?v=3"></script>
+    <script defer src="/score-visualization.js?v=1"></script>
     <script defer src="/app.js?v=9"></script>
   </head>
   <body>
@@ -267,6 +268,7 @@
             </div>
           </div>
           <div class="insight-grid" id="insight-grid"></div>
+          <div class="score-trend-chart" id="score-trend-chart" aria-live="polite"></div>
           <div class="tension-chart" id="tension-chart" aria-label="Progression des joueurs vers le seuil"></div>
         </section>
 
@@ -280,7 +282,7 @@
           <div class="history-table-wrap">
             <table class="history-table" id="history-table">
               <caption>
-                Scores saisis par manche. Une étoile textuelle indique le joueur qui a fermé la manche.
+                Scores par manche avec barres proportionnelles, ajustements de pénalité et effets Chaos.
               </caption>
               <thead id="history-head"></thead>
               <tbody id="history-body"></tbody>

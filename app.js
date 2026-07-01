@@ -1,4 +1,5 @@
 const SkyjoChaos = window.SkyjoChaos;
+const ScoreViz = window.SkyjoScoreViz;
 const STORAGE_KEY = "skyjo-score-arena-state-v2";
 const COLORS = ["#e11d48", "#2563eb", "#0f766e", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#65a30d"];
 
@@ -33,6 +34,7 @@ const elements = {
   submitRound: document.querySelector("#submit-round"),
   undoRound: document.querySelector("#undo-round"),
   insightGrid: document.querySelector("#insight-grid"),
+  scoreTrendChart: document.querySelector("#score-trend-chart"),
   tensionChart: document.querySelector("#tension-chart"),
   historyHead: document.querySelector("#history-head"),
   historyBody: document.querySelector("#history-body"),
@@ -903,6 +905,7 @@ function renderInsights() {
 
   if (state.players.length < 2) {
     elements.insightGrid.innerHTML = `<div class="empty-state">Les analyses apparaîtront avec les premiers scores.</div>`;
+    elements.scoreTrendChart.innerHTML = "";
     elements.tensionChart.innerHTML = "";
     return;
   }
@@ -957,25 +960,175 @@ function renderInsights() {
     )
     .join("");
 
+  renderScoreTrendChart();
   renderTensionChart();
+}
+
+function renderScoreTrendChart() {
+  if (!elements.scoreTrendChart) return;
+
+  if (state.rounds.length === 0) {
+    elements.scoreTrendChart.innerHTML = `<div class="empty-state">La courbe cumulée apparaîtra après la première manche.</div>`;
+    return;
+  }
+
+  const series = ScoreViz.buildCumulativeSeries(state.players, state.rounds);
+  const domain = ScoreViz.getScoreTrendDomain(series, state.targetScore);
+  const layout = ScoreViz.getTrendLayout(state.rounds.length);
+  const margin = { top: 30, right: 120, bottom: 40, left: 54 };
+  const innerWidth = layout.width - margin.left - margin.right;
+  const innerHeight = layout.height - margin.top - margin.bottom;
+  const xRange = Math.max(1, domain.maxRound - domain.minRound);
+  const yRange = Math.max(1, domain.maxScore - domain.minScore);
+  const ranking = getRanking();
+  const leaderId = ranking[0]?.id;
+  const dangerId = [...state.players].sort((a, b) => getTotals()[b.id] - getTotals()[a.id])[0]?.id;
+
+  const x = (round) => margin.left + ((round - domain.minRound) / xRange) * innerWidth;
+  const y = (score) => margin.top + (1 - (score - domain.minScore) / yRange) * innerHeight;
+  const roundStep = Math.max(1, Math.ceil(domain.maxRound / 6));
+  const roundTicks = Array.from({ length: domain.maxRound + 1 }, (_, round) => round).filter(
+    (round) => round === 0 || round === domain.maxRound || round % roundStep === 0
+  );
+  const scoreTicks = [...new Set([domain.minScore, 0, state.targetScore, domain.maxScore])].filter(
+    (score) => score >= domain.minScore && score <= domain.maxScore
+  );
+  const targetY = y(state.targetScore);
+  const zeroY = y(0);
+  const labelPositions = ScoreViz.spreadLabelPositions(
+    series.map((playerSeries) => {
+      const finalPoint = playerSeries.points.at(-1);
+      return { id: playerSeries.player.id, y: y(finalPoint.total) };
+    }),
+    { min: margin.top + 8, max: layout.height - margin.bottom - 8, gap: 15 }
+  );
+
+  const paths = series
+    .map((playerSeries) => {
+      const d = playerSeries.points
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${formatSvgNumber(x(point.round))} ${formatSvgNumber(y(point.total))}`)
+        .join(" ");
+      const finalPoint = playerSeries.points.at(-1);
+      const isLeader = playerSeries.player.id === leaderId;
+      const isDanger = playerSeries.player.id === dangerId;
+      return `
+        <path
+          class="score-line${isLeader ? " is-leader" : ""}${isDanger ? " is-danger" : ""}"
+          d="${d}"
+          stroke="${playerSeries.player.color}"
+        ></path>
+        ${playerSeries.points
+          .slice(1)
+          .map(
+            (point) => `
+              <circle
+                class="score-point"
+                cx="${formatSvgNumber(x(point.round))}"
+                cy="${formatSvgNumber(y(point.total))}"
+                r="${isLeader ? 4.6 : 3.6}"
+                fill="${playerSeries.player.color}"
+              ></circle>
+            `
+          )
+          .join("")}
+        <text
+          class="score-line-label"
+          x="${formatSvgNumber(x(finalPoint.round) + 10)}"
+          y="${formatSvgNumber(labelPositions[playerSeries.player.id] || y(finalPoint.total))}"
+          fill="${playerSeries.player.color}"
+        >${escapeHtml(playerSeries.player.name)} ${finalPoint.total}</text>
+      `;
+    })
+    .join("");
+
+  elements.scoreTrendChart.innerHTML = `
+    <div class="score-trend-header">
+      <div>
+        <strong>Courbe cumulée</strong>
+        <span>Écart entre joueurs après chaque manche</span>
+      </div>
+      <span>Seuil ${state.targetScore}</span>
+    </div>
+    <div class="score-trend-plot" tabindex="0">
+      <svg
+        viewBox="0 0 ${layout.width} ${layout.height}"
+        width="${layout.width}"
+        height="${layout.height}"
+        role="img"
+        aria-labelledby="score-trend-title score-trend-desc"
+      >
+        <title id="score-trend-title">Courbe des scores cumulés</title>
+        <desc id="score-trend-desc">Chaque ligne suit le total d'un joueur par manche. Le score le plus bas est favorable et la ligne pointillée indique le seuil de fin.</desc>
+        <g class="score-grid">
+          ${scoreTicks
+            .map(
+              (score) => `
+                <line x1="${margin.left}" x2="${layout.width - margin.right}" y1="${formatSvgNumber(y(score))}" y2="${formatSvgNumber(y(score))}"></line>
+                <text class="score-y-label" x="${margin.left - 12}" y="${formatSvgNumber(y(score) + 4)}">${score}</text>
+              `
+            )
+            .join("")}
+          ${roundTicks
+            .map(
+              (round) => `
+                <line x1="${formatSvgNumber(x(round))}" x2="${formatSvgNumber(x(round))}" y1="${margin.top}" y2="${layout.height - margin.bottom}"></line>
+                <text class="score-x-label" x="${formatSvgNumber(x(round))}" y="${layout.height - 12}">M${round}</text>
+              `
+            )
+            .join("")}
+        </g>
+        <line class="score-zero-line" x1="${margin.left}" x2="${layout.width - margin.right}" y1="${formatSvgNumber(zeroY)}" y2="${formatSvgNumber(zeroY)}"></line>
+        <line class="score-target-line" x1="${margin.left}" x2="${layout.width - margin.right}" y1="${formatSvgNumber(targetY)}" y2="${formatSvgNumber(targetY)}"></line>
+        <text class="score-target-label" x="${layout.width - margin.right + 10}" y="${formatSvgNumber(targetY + 4)}">seuil</text>
+        <g class="score-series">${paths}</g>
+      </svg>
+    </div>
+    <div class="score-trend-summary" aria-label="Totaux actuels par joueur">
+      ${series
+        .map((playerSeries) => {
+          const finalPoint = playerSeries.points.at(-1);
+          return `<span style="--player-color:${playerSeries.player.color}">${escapeHtml(playerSeries.player.name)} <strong>${finalPoint.total}</strong></span>`;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 function renderTensionChart() {
   const totals = getTotals();
   if (!elements.tensionChart || state.players.length === 0) return;
+  const tensionRows = state.players
+    .map((player) => {
+      const total = totals[player.id] ?? 0;
+      return {
+        player,
+        total,
+        progress: Math.max(0, Math.min(100, (total / state.targetScore) * 100)),
+        risk: ScoreViz.getRiskLevel(total, state.targetScore),
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
   elements.tensionChart.innerHTML = `
     <div class="tension-header">
-      <strong>Timeline de tension</strong>
+      <div>
+        <strong>Jauge de tension</strong>
+        <span>Triée par proximité du seuil</span>
+      </div>
+      <span>0</span>
+      <span>50%</span>
+      <span>75%</span>
       <span>Seuil ${state.targetScore}</span>
     </div>
-    ${state.players
-      .map((player) => {
-        const total = totals[player.id] ?? 0;
-        const progress = Math.max(0, Math.min(100, (total / state.targetScore) * 100));
+    ${tensionRows
+      .map(({ player, total, progress, risk }) => {
         return `
-          <div class="tension-lane" style="--player-color: ${player.color}; --progress: ${progress}%">
-            <span>${escapeHtml(player.name)}</span>
-            <div><i></i></div>
+          <div class="tension-lane risk-${risk.key}" style="--player-color: ${player.color}; --progress: ${progress}%" aria-label="${escapeHtml(player.name)}: ${total} points, ${risk.label}, ${risk.remainingLabel}">
+            <span>
+              <strong>${escapeHtml(player.name)}</strong>
+              <small>${risk.label} · ${risk.remainingLabel}</small>
+            </span>
+            <div class="tension-meter"><i></i></div>
             <strong>${total}</strong>
           </div>
         `;
@@ -1020,6 +1173,8 @@ function renderHistory() {
     return;
   }
 
+  const historyScale = getHistoryScoreScale();
+
   elements.historyHead.innerHTML = `
     <tr>
       <th scope="col">Manche</th>
@@ -1040,7 +1195,7 @@ function renderHistory() {
           <td>${closer ? escapeHtml(closer.name) : "-"}</td>
           <td>${announcer ? escapeHtml(announcer.name) : "-"}</td>
           <td>${renderChaosHistorySummary(round)}</td>
-          ${state.players.map((player) => renderHistoryCell(round, player)).join("")}
+          ${state.players.map((player) => renderHistoryCell(round, player, historyScale)).join("")}
         </tr>
       `;
     })
@@ -1065,7 +1220,8 @@ function renderHistory() {
                 const official = round.officialAdjustedScores?.[player.id] ?? raw;
                 const adjusted = round.adjustedScores[player.id] ?? official;
                 const hasPenalty = raw !== adjusted;
-                return `<span class="round-score-pill${hasPenalty ? " has-penalty" : ""}" style="--player-color:${player.color}">${renderAvatar(player, "round-pill-avatar")}${escapeHtml(player.name)} ${escapeHtml(renderScoreStep(round, player))}</span>`;
+                const magnitude = getScoreMagnitude(adjusted, historyScale);
+                return `<span class="round-score-pill${hasPenalty ? " has-penalty" : ""}${adjusted < 0 ? " is-negative" : ""}" style="--player-color:${player.color}; --score-width:${magnitude}%">${renderAvatar(player, "round-pill-avatar")}${escapeHtml(player.name)} ${escapeHtml(renderScoreStep(round, player))}</span>`;
               })
               .join("")}
           </div>
@@ -1087,6 +1243,19 @@ function renderChaosHistorySummary(round) {
   `;
 }
 
+function getHistoryScoreScale() {
+  return Math.max(
+    1,
+    ...state.rounds.flatMap((round) =>
+      state.players.map((player) => Math.abs(Number(round.adjustedScores?.[player.id] ?? round.scores?.[player.id] ?? 0)))
+    )
+  );
+}
+
+function getScoreMagnitude(score, scale) {
+  return Math.max(6, Math.min(100, (Math.abs(Number(score) || 0) / Math.max(1, scale)) * 100));
+}
+
 function renderScoreStep(round, player) {
   const raw = round.scores[player.id] ?? 0;
   const official = round.officialAdjustedScores?.[player.id] ?? raw;
@@ -1096,16 +1265,29 @@ function renderScoreStep(round, player) {
   if (official !== raw) parts.push(`${official} penalite`);
   if (final !== official) parts.push(`${final} chaos`);
   if (parts.length === 1) return `${final}`;
-  const suffix = effects.length ? ` (${effects.map(escapeHtml).join(", ")})` : "";
+  const suffix = effects.length ? ` (${effects.join(", ")})` : "";
   return `${parts.join(" -> ")}${suffix}`;
 }
 
-function renderHistoryCell(round, player) {
+function renderHistoryCell(round, player, historyScale) {
   const raw = round.scores[player.id] ?? 0;
   const official = round.officialAdjustedScores?.[player.id] ?? raw;
   const adjusted = round.adjustedScores[player.id] ?? official;
   const hasChange = raw !== adjusted;
-  return `<td class="${hasChange ? "penalty-cell" : ""}">${escapeHtml(renderScoreStep(round, player))}</td>`;
+  const scoreStep = renderScoreStep(round, player);
+  const magnitude = getScoreMagnitude(adjusted, historyScale);
+  return `
+    <td class="${hasChange ? "penalty-cell" : ""}">
+      <span
+        class="history-score-cell${hasChange ? " has-change" : ""}${adjusted < 0 ? " is-negative" : ""}"
+        style="--player-color:${player.color}; --score-width:${magnitude}%"
+        aria-label="${escapeHtml(player.name)} manche ${round.number}: ${escapeHtml(scoreStep)}"
+      >
+        <span aria-hidden="true"></span>
+        <strong>${escapeHtml(scoreStep)}</strong>
+      </span>
+    </td>
+  `;
 }
 
 function updateButtons() {
@@ -1209,6 +1391,10 @@ function pulseHero() {
 
 function formatNumber(value) {
   return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(value);
+}
+
+function formatSvgNumber(value) {
+  return Number(value).toFixed(2).replace(/\.?0+$/, "");
 }
 
 function signedNumber(value) {

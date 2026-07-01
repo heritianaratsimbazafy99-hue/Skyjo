@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "check": "node --check app.js && node --check server.js && node --check chaos-engine.js",
+    "check": "node --check app.js && node --check score-visualization.js && node --check server.js && node --check chaos-engine.js",
     "test": "node --test test/*.test.js"
   },
   "engines": {
