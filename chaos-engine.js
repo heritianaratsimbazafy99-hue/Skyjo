@@ -91,6 +91,125 @@
     return CHAOS_CARDS.find((card) => card.id === cardId) || null;
   }
 
+  function isChaosEnabled(state) {
+    return Boolean(state?.chaosMode?.enabled) && Array.isArray(state.players) && state.players.length >= 2 && !state.gameOver;
+  }
+
+  function getTotals(state) {
+    return (state.players || []).reduce((totals, player) => {
+      totals[player.id] = (state.rounds || []).reduce((sum, round) => sum + Number(round.adjustedScores?.[player.id] ?? 0), 0);
+      return totals;
+    }, {});
+  }
+
+  function getRanking(state) {
+    const totals = getTotals(state);
+    return [...(state.players || [])].sort((a, b) => {
+      const diff = (totals[a.id] ?? 0) - (totals[b.id] ?? 0);
+      if (diff !== 0) return diff;
+      return String(a.name || "").localeCompare(String(b.name || ""), "fr");
+    });
+  }
+
+  function getPreviousChaosCardId(state) {
+    return state?.rounds?.at?.(-1)?.chaos?.cardId || null;
+  }
+
+  function getEligibleCards(state) {
+    const mode = normalizeChaosMode(state?.chaosMode, state?.rounds || []);
+    const previousCardId = getPreviousChaosCardId(state);
+    return CHAOS_CARDS.filter((card) => {
+      if (card.id === previousCardId) return false;
+      if (card.rarity === RARITY.VERY_RARE && mode.usedRareCardIds.includes(card.id)) return false;
+      if (card.requiresTwoRounds && (!Array.isArray(state?.rounds) || state.rounds.length < 2)) return false;
+      return true;
+    });
+  }
+
+  function pickWeighted(cards, random) {
+    const totalWeight = cards.reduce((sum, card) => sum + card.weight, 0);
+    let cursor = random() * totalWeight;
+    for (const card of cards) {
+      cursor -= card.weight;
+      if (cursor <= 0) return card;
+    }
+    return cards[cards.length - 1] || null;
+  }
+
+  function pickPlayerIds(players, count, random) {
+    const pool = [...players];
+    const picked = [];
+    while (pool.length && picked.length < count) {
+      const index = Math.min(pool.length - 1, Math.floor(random() * pool.length));
+      picked.push(pool.splice(index, 1)[0].id);
+    }
+    return picked;
+  }
+
+  function resolveTargets(card, state, random) {
+    const players = state.players || [];
+    if (card.target === "random-player") return { players: pickPlayerIds(players, 1, random) };
+    if (card.target === "two-random-players") return { players: pickPlayerIds(players, 2, random) };
+    if (card.id === "couronne-lourde" || card.id === "chasse-au-leader" || card.id === "leader-en-surtension") {
+      const leader = getRanking(state)[0];
+      return { players: leader ? [leader.id] : [] };
+    }
+    if (card.id === "dernier-souffle" || card.id === "rattrapage-brutal" || card.id === "contre-leader") {
+      const last = getRanking(state).at(-1);
+      return { players: last ? [last.id] : [] };
+    }
+    if (card.id === "sous-marin") {
+      const runnerUp = getRanking(state)[1];
+      return { players: runnerUp ? [runnerUp.id] : [] };
+    }
+    return { players: [] };
+  }
+
+  function snapshotCard(card, state, random) {
+    return {
+      id: card.id,
+      title: card.title,
+      timing: card.timing,
+      rarity: card.rarity,
+      category: card.category,
+      description: card.description,
+      manual: Boolean(card.manual),
+      revealedBeforeSubmit: card.timing === TIMING.BEFORE,
+      targets: resolveTargets(card, state, random),
+    };
+  }
+
+  function normalizeActiveChaosCard(input, players) {
+    const card = getCard(input?.id);
+    if (!card) return null;
+    const playerIds = new Set((players || []).map((player) => player.id));
+    return {
+      id: card.id,
+      title: card.title,
+      timing: card.timing,
+      rarity: card.rarity,
+      category: card.category,
+      description: card.description,
+      manual: Boolean(card.manual),
+      revealedBeforeSubmit: Boolean(input.revealedBeforeSubmit),
+      targets: {
+        players: Array.isArray(input.targets?.players) ? input.targets.players.filter((playerId) => playerIds.has(playerId)) : [],
+      },
+    };
+  }
+
+  function selectNextChaosCard(state, options = {}) {
+    if (!isChaosEnabled(state)) return null;
+    const random = typeof options.random === "function" ? options.random : Math.random;
+    if (options.forceCardId) {
+      const forced = getCard(options.forceCardId);
+      return forced ? snapshotCard(forced, state, random) : null;
+    }
+    const eligible = getEligibleCards(state);
+    const selected = pickWeighted(eligible.length ? eligible : CHAOS_CARDS, random);
+    return selected ? snapshotCard(selected, state, random) : null;
+  }
+
   return {
     CATEGORY,
     CHAOS_CARDS,
@@ -98,6 +217,12 @@
     TIMING,
     createDefaultChaosMode,
     getCard,
+    getEligibleCards,
+    getRanking,
+    getTotals,
+    isChaosEnabled,
+    normalizeActiveChaosCard,
     normalizeChaosMode,
+    selectNextChaosCard,
   };
 });
