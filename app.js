@@ -382,7 +382,10 @@ function applyAction(currentState, action) {
       if (next.rounds.length === 0) return { error: "Aucune manche à annuler." };
       const removed = next.rounds.pop();
       next.gameOver = false;
-      next.chaosMode = SkyjoChaos.normalizeChaosMode(next.chaosMode, next.rounds);
+      next.chaosMode = SkyjoChaos.normalizeChaosMode({
+        ...next.chaosMode,
+        usedRareCardIds: [],
+      }, next.rounds);
       next.activeChaosCard = null;
       ensureChaosCardForNextRound(next);
       meta.message = `Manche ${removed.number} annulée.`;
