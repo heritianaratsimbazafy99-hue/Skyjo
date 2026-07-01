@@ -132,3 +132,23 @@ test("very rare cards are returned for usedRareCardIds", () => {
   assert.deepEqual(result.adjustedScores, { p1: 2, p2: 10, p3: -2 });
   assert.deepEqual(result.usedRareCardIds, ["banque-cassee"]);
 });
+
+test("fermeture kamikaze applies on a tied zero closer score", () => {
+  const result = applyCard("fermeture-kamikaze", { p1: 0, p2: 0, p3: 9 }, undefined, {
+    closerId: "p1",
+  });
+  assert.equal(result.adjustedScores.p1, 5);
+});
+
+test("score steps include ordered official penalty and chaos steps", () => {
+  const result = applyCard("fermeture-kamikaze", { p1: 12, p2: 8, p3: 20 }, { p1: 24, p2: 8, p3: 20 }, {
+    closerId: "p1",
+    closerPenaltyApplied: true,
+  });
+  assert.equal(result.adjustedScores.p1, 41);
+  assert.deepEqual(result.scoreSteps.p1.steps, [
+    { label: "score brut", value: 12 },
+    { label: "penalite fermeture", value: 24 },
+    { label: "effet chaos", value: 41 },
+  ]);
+});

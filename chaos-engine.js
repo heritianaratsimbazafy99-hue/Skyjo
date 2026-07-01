@@ -255,6 +255,11 @@
     return Number(closerScore) > 0 && Object.entries(rawScores).some(([playerId, score]) => playerId !== closerId && score <= closerScore);
   }
 
+  function isCloserNotStrictlyBest(rawScores, closerId) {
+    const closerScore = rawScores[closerId];
+    return closerId in rawScores && Object.entries(rawScores).some(([playerId, score]) => playerId !== closerId && score <= closerScore);
+  }
+
   function findLastRoundWinnerId(round) {
     if (!round?.adjustedScores) return null;
     const bestIds = getBestIds(round.adjustedScores);
@@ -270,6 +275,11 @@
         official: officialScores[playerId],
         final: finalScores[playerId],
         effects: playerEffects,
+        steps: [
+          { label: "score brut", value: rawScores[playerId] },
+          ...(officialScores[playerId] !== rawScores[playerId] ? [{ label: "penalite fermeture", value: officialScores[playerId] }] : []),
+          ...(finalScores[playerId] !== officialScores[playerId] ? [{ label: "effet chaos", value: finalScores[playerId] }] : []),
+        ],
       };
     }
     return steps;
@@ -551,7 +561,7 @@
         break;
       }
       case "fermeture-kamikaze": {
-        if (closerId && hasCloserFailed(rawScores, closerId)) {
+        if (closerId && isCloserNotStrictlyBest(rawScores, closerId)) {
           adjustedScores[closerId] = rawScores[closerId] * 3 + 5;
           addEffect(effects, card, "fermeture kamikaze x3 +5", [closerId]);
         }
