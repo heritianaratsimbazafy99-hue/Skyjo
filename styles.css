@@ -1866,3 +1866,25 @@ body.controller-mode .round-panel {
   background: rgba(225, 29, 72, 0.12);
   color: #be123c;
 }
+
+.history-chaos-summary {
+  display: grid;
+  gap: 2px;
+  min-width: 160px;
+}
+
+.history-chaos-summary strong {
+  font-size: 0.82rem;
+}
+
+.history-chaos-summary small,
+.round-chaos-note {
+  color: rgba(47, 23, 37, 0.68);
+}
+
+.round-chaos-note {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(225, 29, 72, 0.08);
+}

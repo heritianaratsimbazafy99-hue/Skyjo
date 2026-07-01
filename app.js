@@ -713,6 +713,10 @@ function renderPlayers() {
     .join("");
 }
 
+function renderAvatar(player, className = "player-avatar") {
+  return `<span class="${className} player-avatar" aria-hidden="true">${escapeHtml(player.name.charAt(0).toUpperCase())}</span>`;
+}
+
 function renderLiveTable() {
   if (!elements.liveTable) return;
   const totals = getTotals();
@@ -996,6 +1000,8 @@ function renderHistory() {
     <tr>
       <th scope="col">Manche</th>
       <th scope="col">Fermeture</th>
+      <th scope="col">Annonce</th>
+      <th scope="col">Chaos</th>
       ${state.players.map((player) => `<th scope="col">${escapeHtml(player.name)}</th>`).join("")}
     </tr>
   `;
@@ -1003,10 +1009,13 @@ function renderHistory() {
   elements.historyBody.innerHTML = state.rounds
     .map((round) => {
       const closer = state.players.find((player) => player.id === round.closerId);
+      const announcer = state.players.find((player) => player.id === round.announcerId);
       return `
         <tr>
           <th scope="row">${round.number}</th>
           <td>${closer ? escapeHtml(closer.name) : "-"}</td>
+          <td>${announcer ? escapeHtml(announcer.name) : "-"}</td>
+          <td>${renderChaosHistorySummary(round)}</td>
           ${state.players.map((player) => renderHistoryCell(round, player)).join("")}
         </tr>
       `;
@@ -1022,13 +1031,15 @@ function renderHistory() {
             <span>Manche ${round.number}</span>
             <strong>${closer ? escapeHtml(closer.name) : "-"} ferme</strong>
           </div>
+          ${round.chaos ? `<p class="round-chaos-note"><strong>${escapeHtml(round.chaos.title)}</strong> ${escapeHtml((round.chaos.effects || []).map((effect) => effect.message).join(", ") || "defi affiche")}</p>` : ""}
           <div class="round-score-grid">
             ${state.players
               .map((player) => {
                 const raw = round.scores[player.id] ?? 0;
-                const adjusted = round.adjustedScores[player.id] ?? raw;
+                const official = round.officialAdjustedScores?.[player.id] ?? raw;
+                const adjusted = round.adjustedScores[player.id] ?? official;
                 const hasPenalty = raw !== adjusted;
-                return `<span class="round-score-pill${hasPenalty ? " has-penalty" : ""}" style="--player-color:${player.color}">${escapeHtml(player.name)} ${hasPenalty ? `${raw}->${adjusted}` : adjusted}</span>`;
+                return `<span class="round-score-pill${hasPenalty ? " has-penalty" : ""}" style="--player-color:${player.color}">${renderAvatar(player, "round-pill-avatar")}${escapeHtml(player.name)} ${escapeHtml(renderScoreStep(round, player))}</span>`;
               })
               .join("")}
           </div>
@@ -1038,11 +1049,37 @@ function renderHistory() {
     .join("");
 }
 
+function renderChaosHistorySummary(round) {
+  if (!round.chaos) return "-";
+  const effects = Array.isArray(round.chaos.effects) ? round.chaos.effects : [];
+  const effectText = effects.length ? effects.map((effect) => effect.message).join(", ") : "aucun score modifie";
+  return `
+    <div class="history-chaos-summary">
+      <strong>${escapeHtml(round.chaos.title)}</strong>
+      <small>${escapeHtml(effectText)}</small>
+    </div>
+  `;
+}
+
+function renderScoreStep(round, player) {
+  const raw = round.scores[player.id] ?? 0;
+  const official = round.officialAdjustedScores?.[player.id] ?? raw;
+  const final = round.adjustedScores[player.id] ?? official;
+  const effects = round.chaos?.scoreSteps?.[player.id]?.effects || [];
+  const parts = [`${raw}`];
+  if (official !== raw) parts.push(`${official} penalite`);
+  if (final !== official) parts.push(`${final} chaos`);
+  if (parts.length === 1) return `${final}`;
+  const suffix = effects.length ? ` (${effects.map(escapeHtml).join(", ")})` : "";
+  return `${parts.join(" -> ")}${suffix}`;
+}
+
 function renderHistoryCell(round, player) {
   const raw = round.scores[player.id] ?? 0;
-  const adjusted = round.adjustedScores[player.id] ?? raw;
-  const hasPenalty = raw !== adjusted;
-  return `<td class="${hasPenalty ? "penalty-cell" : ""}">${hasPenalty ? `${raw} -> ${adjusted}` : adjusted}</td>`;
+  const official = round.officialAdjustedScores?.[player.id] ?? raw;
+  const adjusted = round.adjustedScores[player.id] ?? official;
+  const hasChange = raw !== adjusted;
+  return `<td class="${hasChange ? "penalty-cell" : ""}">${escapeHtml(renderScoreStep(round, player))}</td>`;
 }
 
 function updateButtons() {
